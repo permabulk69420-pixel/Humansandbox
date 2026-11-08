@@ -60,6 +60,7 @@ var props: Node3D
 var collision_root: Node3D
 var radio: Radio
 var torch: Blowtorch
+var knife: KitchenKnife
 var _materials := {}
 var _batches := {}
 var _noise := FastNoiseLite.new()
@@ -663,6 +664,12 @@ func _build_props() -> void:
 	torch.position = Vector3(X1 - 0.38, SHELF_BOARD + 0.006, -5.7)
 	torch.rotation_degrees.y = 90.0
 	props.add_child(torch)
+	# Rest flat on the steel table: the supplied mesh is only 32 cm long, already in metres.
+	knife = KitchenKnife.new()
+	knife.name = "KitchenKnife"
+	knife.position = TABLE_POS + Vector3(0.33, TABLE_TOP + 0.012, 0.36)
+	knife.rotation = Vector3(0.0, 0.2, PI / 2.0)
+	props.add_child(knife)
 
 
 # Puts a Poly Haven model into the room. `pos` is where its base (or, for the lamp, its top) goes.
