@@ -1,0 +1,25 @@
+# Puts the APK that is committed in apk/ on the Releases page. No Godot, no downloads: it only publishes the file.
+name: Publish APK to Releases
+
+on:
+  push:
+    paths: ['apk/humansandbox.apk', '.github/workflows/release-apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -s apk/humansandbox.apk
+          gh release delete quest-latest --yes --cleanup-tag || true
+          gh release create quest-latest apk/humansandbox.apk \
+            --latest --target "$GITHUB_SHA" --title "Humansandbox APK (walking build)" \
+            --notes "The Quest APK from commit ${GITHUB_SHA:0:7}. Download humansandbox.apk and install it."
