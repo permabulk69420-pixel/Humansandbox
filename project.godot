@@ -26,7 +26,7 @@ renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
 textures/default_filters/anisotropic_filtering_level=2
-anti_aliasing/quality/msaa_3d=2
+anti_aliasing/quality/msaa_3d=3
 mesh_lod/lod_change/threshold_pixels=0.0
 
 [xr]
