@@ -683,12 +683,6 @@ func _build_props() -> void:
 	# the old bed along the west wall, and a metal rack against the south wall
 	add_prop("old_bed_frame", Vector3(X0 + 0.5, 0, -5.2), 0.0)
 	add_prop("worn_metal_rack", Vector3(1.7, 0, Z1 - 0.35), 180.0)
-	# what is lying on the table (the flat tools are modelled standing up, so they are laid down)
-	var hammer := add_prop("cross_pein_hammer", Vector3(0.05, TABLE_TOP + 0.012, -3.0), 0.0, false)
-	hammer.rotation_degrees = Vector3(-90.0, 25.0, 0.0)
-	var saw := add_prop("rusted_hacksaw", Vector3(0.3, TABLE_TOP + 0.02, -3.9), 0.0, false)
-	saw.rotation_degrees = Vector3(-90.0, -15.0, 0.0)
-	add_prop("medical_box", Vector3(0.1, TABLE_TOP, -2.75), 10.0, false)
 	add_prop("rubber_boots", Vector3(-0.5, 0, -7.35), 20.0, false)
 	add_prop("old_gas_mask", Vector3(X1 - 0.14, 1.8, -1.0), -90.0, false)       # hung on the east wall
 	# the radio on the shelves, facing into the room, shrunk 5% so its antenna clears the board above
