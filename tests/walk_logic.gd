@@ -33,6 +33,7 @@ func run() -> void:
 	test_turn_to_face()
 	test_wander()
 	test_hit_while_walking()
+	test_knockdown()
 	test_detector_ignores_your_own_movement()
 	await test_player_movement()
 	print("\n%s" % ("all walking checks pass" if failures == 0 else "%d checks FAILED" % failures))
@@ -187,6 +188,68 @@ func test_hit_while_walking() -> void:
 	check(w.speed < 0.02, "and she stops (%.2f m/s)" % w.speed)
 	step(w, 1.0)
 	check(w.move_target == null, "and she does not set straight off again")
+	w.queue_free()
+
+
+func test_knockdown() -> void:
+	print("being knocked down")
+	var w := make_woman()
+	step(w, 0.5)
+	for i in 10:
+		w.hit(w.head_center() + Vector3(0, 0, 0.1), Vector3(0, 0, -2.0), 0.3)
+		step(w, 1.5)
+	check(w.knockdowns == 0 and w.fall_state == Woman.Fall.STANDING, "light taps never knock her down (%d of them)" % w.hits)
+	w.queue_free()
+
+	w = make_woman()
+	step(w, 0.5)
+	w.hit(w.head_center() + Vector3(0, 0, 0.1), Vector3(0, 0, -4.0), 0.75)
+	step(w, 3.0)
+	check(w.knockdowns == 0, "one decent punch on its own does not")
+	w.hit(w.head_center() + Vector3(0, 0, 0.1), Vector3(0, 0, -4.0), 0.75)
+	step(w, 0.4)
+	w.hit(w.head_center() + Vector3(0, 0, 0.1), Vector3(0, 0, -4.0), 0.75)
+	check(w.knockdowns == 1, "but two close together do")
+	var weak_lie := w.lie_timer
+	w.queue_free()
+
+	w = make_woman()
+	step(w, 0.5)
+	w.hit(w.head_center() + Vector3(0, 0, 0.1), Vector3(0, 0, -5.0), 1.0)
+	check(w.fall_state == Woman.Fall.FALLING and w.knockdowns == 1, "a full-strength punch knocks her down")
+	check(w.lie_timer > weak_lie, "and she stays down longer than after softer ones (%.1f s against %.1f s)" % [w.lie_timer, weak_lie])
+	var strong_lie := w.lie_timer
+	step(w, 2.6)
+	var hips: float = (w.skeleton.global_transform * w.skeleton.get_bone_global_pose(w.bone["Hips"]).origin).y
+	check(w.fall_state == Woman.Fall.LYING, "she is down")
+	check(hips < 0.3 and w.head_center().y < 0.5, "flat on the floor (hips %.2f m, head %.2f m up)" % [hips, w.head_center().y])
+	check(w.head_center().z < -0.4, "fallen away from the punch (head %.2f m back)" % -w.head_center().z)
+	var count := w.hits
+	w.hit(w.head_center(), Vector3(0, 0, -5.0), 1.0)
+	check(w.hits == count + 1 and w.knockdowns == 1 and w.fall_state == Woman.Fall.LYING, "hitting her while she is down does not start another fall")
+	step(w, strong_lie + 3.6)
+	check(w.fall_state == Woman.Fall.STANDING, "then she gets up")
+	check(w.head_center().y > 1.4 and w.clip_name == "Idle_Loop" and w.damage == 0.0, "standing, recovered (head %.2f m up)" % w.head_center().y)
+	step(w, 6.0)
+	w.hit(w.head_center() + Vector3(0, 0, 0.1), Vector3(0, 0, -5.0), 1.0)
+	check(w.knockdowns == 2, "and she can be knocked down again")
+	w.queue_free()
+
+	# she goes down the way the punch was travelling, from the side too
+	w = make_woman()
+	step(w, 0.5)
+	w.hit(w.head_center() + Vector3(0.1, 0, 0), Vector3(-5.0, 0, 0), 1.0)
+	step(w, 2.6)
+	check(w.fall_state == Woman.Fall.LYING and w.head_center().x < -0.4 and w.head_center().y < 0.5, "a punch from the side puts her down sideways (head %.2f m across)" % w.head_center().x)
+	w.queue_free()
+
+	# and a walker stops
+	w = make_woman()
+	w.walk_to(Vector3(6.0, 0, 0))
+	step(w, 4.0)
+	w.hit(w.head_center() + Vector3(0, 0, 0.1), Vector3(0, 0, -5.0), 1.0)
+	step(w, 1.0)
+	check(w.speed < 0.02 and w.knockdowns == 1, "a walking woman is stopped in her tracks and goes down")
 	w.queue_free()
 
 

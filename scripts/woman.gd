@@ -2,6 +2,8 @@
 #   * watches whoever `target` is: the head and neck turn towards it within human limits, and each eye aims at it on its own
 #   * plays baked mocap clips for her base motion (idle, walk; tools/bake_clips.gd retargets them from a CC0 library onto her skeleton)
 #   * walks: she turns her body to face the player when they move round her, can walk to a point (walk_to) or wander about her spot
+#   * can be knocked down: every punch adds damage (by its strength squared, fading over a few seconds); enough of it and she falls the
+#     way the punch was travelling, lies there for longer the harder she was hit, and gets back up (the fall clip played backwards)
 #   * takes a punch: hit() turns the fist's speed and where it landed into a spin on her head, which a spring carries through
 #     the spine, neck and head and then settles; she loses track of the player for a moment and then finds them again.
 #
@@ -45,6 +47,11 @@ const TURN_ACCEL := deg_to_rad(500.0)
 const WALK_ACCEL := 1.2
 const FACE_AFTER := deg_to_rad(50.0)                  # she turns her body once the player is further than this off her front...
 const FACE_DONE := deg_to_rad(8.0)                    # ...and stops when they are this close to it
+const FALL_CLIP := "Death01"
+const DAMAGE_PER_PUNCH := 1.2                         # times the punch's strength squared
+const DAMAGE_FADE := 0.35                             # per second
+const KNOCKDOWN_AT := 1.0                             # one full-strength punch, or two or three decent ones close together
+const GET_UP_RATE := 0.8                              # the fall clip played backwards, a bit slower
 const WANDER_RADIUS := 1.2
 const KEEP_AWAY := 0.9                                # wandering never takes her this close to the player
 
@@ -83,6 +90,13 @@ var fade := 1.0                    # 1 = all on the current clip
 var walk_speed := 0.8              # m/s her feet cover the ground at in the walk clip, at normal playback
 
 var body_turns := true              # turn the whole body to face the player when they move round to her side
+enum Fall { STANDING, FALLING, LYING, GETTING_UP }
+var fall_state := Fall.STANDING
+var damage := 0.0
+var lie_timer := 0.0
+var fall_yaw := 0.0                # the way she is turned as she falls so that she goes down the way she was hit
+var knockdowns := 0
+var fade_length := FADE_TIME
 var wander := false                # stroll about `home` when nothing else is going on
 var home := Vector3.ZERO           # the spot she wanders round
 var move_target = null             # a world point she is walking to (Vector3), or null
@@ -138,6 +152,10 @@ func _process(delta: float) -> void:
 
 # A fist landed at `point` moving at `velocity` (both in world space).
 func hit(point: Vector3, velocity: Vector3, strength: float = 1.0) -> void:
+	hits += 1
+	hit_taken.emit(point, strength)
+	if fall_state != Fall.STANDING:
+		return                                       # already down: it counts, but there is nothing left to knock
 	var to_model := skeleton.global_transform.affine_inverse()
 	var r: Vector3 = to_model * point - to_model * _head_pivot_world()
 	var v: Vector3 = to_model.basis * velocity
@@ -148,8 +166,24 @@ func hit(point: Vector3, velocity: Vector3, strength: float = 1.0) -> void:
 	stun = 0.55 + 0.45 * clampf(strength, 0.0, 1.0)
 	move_target = null                              # a punch stops her in her tracks
 	pause_timer = maxf(pause_timer, 1.5 + strength)
-	hits += 1
-	hit_taken.emit(point, strength)
+	damage += DAMAGE_PER_PUNCH * strength * strength
+	if damage >= KNOCKDOWN_AT and clips.has(FALL_CLIP):
+		_knock_down(velocity, strength)
+
+
+# She goes over, backwards, in the direction the punch was travelling, and stays down for longer the harder it was.
+func _knock_down(velocity: Vector3, strength: float) -> void:
+	fall_state = Fall.FALLING
+	knockdowns += 1
+	lie_timer = 1.5 + 3.5 * clampf(strength, 0.0, 1.0)
+	var push := Vector3(velocity.x, 0.0, velocity.z)
+	if push.length() < 0.2 and _has_target():
+		push = global_position - target.global_position
+		push.y = 0.0
+	if push.length() > 0.001:
+		fall_yaw = atan2(-push.x, -push.z)          # the fall clip goes over backwards: her back must face the way she is pushed
+	else:
+		fall_yaw = rotation.y
 
 
 # Walk to a point (world space). She turns to it first, then sets off.
@@ -236,6 +270,8 @@ func _update_attention(dt: float) -> void:
 
 
 func _update_reaction(dt: float) -> void:
+	if fall_state == Fall.STANDING:
+		damage = maxf(0.0, damage - DAMAGE_FADE * dt)
 	var k := pow(TAU * SPRING_HZ, 2.0)
 	var c := 2.0 * SPRING_DAMPING * TAU * SPRING_HZ
 	hit_velocity += (-k * hit_angle - c * hit_velocity) * dt
@@ -343,6 +379,9 @@ func _advance(name_of_clip: String, t: float, by: float) -> float:
 func _update_clip(dt: float) -> void:
 	if clips.is_empty():
 		return
+	if fall_state != Fall.STANDING and clips.has(FALL_CLIP):
+		_update_fall_clip(dt)
+		return
 	var moving := speed > 0.05
 	var stepping := absf(turn_velocity) > deg_to_rad(14.0)
 	var wanted := "Walk_Loop" if ((moving or stepping) and clips.has("Walk_Loop")) else "Idle_Loop"
@@ -351,6 +390,7 @@ func _update_clip(dt: float) -> void:
 		fade_time = clip_time
 		fade_rate = clip_rate
 		fade = 0.0
+		fade_length = FADE_TIME
 		clip_name = wanted
 		clip_time = 0.0
 	if moving:
@@ -360,7 +400,46 @@ func _update_clip(dt: float) -> void:
 	clip_time = _advance(clip_name, clip_time, dt * clip_rate)
 	if fade < 1.0:
 		fade_time = _advance(fade_name, fade_time, dt * fade_rate)
-		fade = minf(1.0, fade + dt / FADE_TIME)
+		fade = minf(1.0, fade + dt / fade_length)
+
+
+# Falling plays the fall clip forwards, lying holds its last frame, getting up plays it backwards and then goes back to idling.
+func _update_fall_clip(dt: float) -> void:
+	var length: float = clips[FALL_CLIP].length
+	if clip_name != FALL_CLIP:
+		fade_name = clip_name
+		fade_time = clip_time
+		fade_rate = clip_rate
+		fade = 0.0
+		fade_length = 0.12
+		clip_name = FALL_CLIP
+		clip_time = 0.0
+	clip_rate = 1.0
+	match fall_state:
+		Fall.FALLING:
+			clip_time = minf(clip_time + dt, length)
+			if clip_time >= length - 0.001:
+				fall_state = Fall.LYING
+		Fall.LYING:
+			lie_timer -= dt
+			if lie_timer <= 0.0:
+				fall_state = Fall.GETTING_UP
+		Fall.GETTING_UP:
+			clip_time = maxf(clip_time - dt * GET_UP_RATE, 0.0)
+			if clip_time <= 0.0:
+				fall_state = Fall.STANDING
+				damage = 0.0
+				pause_timer = maxf(pause_timer, 2.0)
+				fade_name = FALL_CLIP
+				fade_time = 0.0
+				fade_rate = 0.0
+				fade = 0.0
+				fade_length = 0.3
+				clip_name = "Idle_Loop"
+				clip_time = 0.0
+	if fade < 1.0:
+		fade_time = _advance(fade_name, fade_time, dt * fade_rate)
+		fade = minf(1.0, fade + dt / fade_length)
 
 
 # Sets each animated bone's offset from the clip (blending from the previous one) and returns how far the hips travel.
@@ -402,7 +481,14 @@ func _update_movement(dt: float) -> void:
 
 	var desired_speed := 0.0
 	var desired_turn := 0.0
-	if move_target != null:
+	if fall_state != Fall.STANDING:
+		stun = maxf(stun, 0.2)
+		staggered = true
+		move_target = null
+		turning_to_face = false
+		if fall_state == Fall.FALLING and clip_time < 0.5:
+			desired_turn = clampf(wrapf(fall_yaw - rotation.y, -PI, PI) * 12.0, -deg_to_rad(720.0), deg_to_rad(720.0))
+	elif move_target != null:
 		var to_goal: Vector3 = move_target - global_position
 		to_goal.y = 0.0
 		var distance := to_goal.length()
@@ -428,6 +514,8 @@ func _update_movement(dt: float) -> void:
 	if staggered:
 		desired_speed = 0.0
 	turn_velocity = move_toward(turn_velocity, desired_turn, TURN_ACCEL * dt)
+	if fall_state == Fall.FALLING:
+		turn_velocity = desired_turn                  # she is thrown round at once by the punch
 	speed = move_toward(speed, desired_speed, WALK_ACCEL * (4.0 if staggered else 1.0) * dt)
 	rotation.y += turn_velocity * dt
 	global_position += Vector3(sin(rotation.y), 0.0, cos(rotation.y)) * speed * dt

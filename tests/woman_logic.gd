@@ -140,7 +140,7 @@ func test_hit_front() -> void:
 	step(w, 2.0)
 	var before := w.head_forward()
 	check(w.look_weight > 0.99, "watching the player before the hit")
-	w.hit(w.head_center() + Vector3(0, -0.02, 0.10), Vector3(0, 0, -4.0), 1.0)
+	w.hit(w.head_center() + Vector3(0, -0.02, 0.10), Vector3(0, 0, -4.0), 0.6)
 	check(w.hits == 1, "hit counted")
 	var peak := 0.0
 	var peak_up := 0.0
@@ -167,7 +167,7 @@ func test_hit_side() -> void:
 		step(w, 2.0)
 		var before := yaw_of(w.head_forward())
 		# a hook from her left (+X) travelling towards her right (-X) if sign > 0; mirrored otherwise
-		w.hit(w.head_center() + Vector3(0.10 * sign, 0, 0.03), Vector3(-4.0 * sign, 0, 0), 1.0)
+		w.hit(w.head_center() + Vector3(0.10 * sign, 0, 0.03), Vector3(-4.0 * sign, 0, 0), 0.6)
 		var extreme := 0.0
 		for i in int(0.6 * 72):
 			w.update(1.0 / 72.0)
