@@ -213,8 +213,8 @@ func _add_struggle(offsets: Array[Quaternion]) -> void:
 		["Spine", Vector3.RIGHT, 2.0, 4.6, 0.4], ["Spine", Vector3.UP, 3.0, 3.7, 2.0],
 		["Chest", Vector3.UP, 3.0, 5.9, 0.7], ["Chest", Vector3.BACK, 2.0, 4.3, 1.9],
 		["Head", Vector3.UP, 18.0, 3.1, 0.2], ["Head", Vector3.RIGHT, 8.0, 4.4, 1.3], ["Head", Vector3.BACK, 7.0, 2.7, 0.9],
-		["LeftUpperArm", Vector3.BACK, 3.0, 6.2, 0.3], ["LeftUpperArm", Vector3.RIGHT, 2.0, 5.1, 2.2], ["LeftLowerArm", Vector3.BACK, 2.0, 7.3, 1.0],
-		["RightUpperArm", Vector3.BACK, 3.0, 5.7, 2.6], ["RightUpperArm", Vector3.RIGHT, 2.0, 6.6, 0.5], ["RightLowerArm", Vector3.BACK, 2.0, 6.9, 3.1],
+		["LeftUpperArm", Vector3.BACK, 1.5, 6.2, 0.3], ["LeftUpperArm", Vector3.RIGHT, 1.0, 5.1, 2.2], ["LeftLowerArm", Vector3.BACK, 1.0, 7.3, 1.0],
+		["RightUpperArm", Vector3.BACK, 1.5, 5.7, 2.6], ["RightUpperArm", Vector3.RIGHT, 1.0, 6.6, 0.5], ["RightLowerArm", Vector3.BACK, 1.0, 6.9, 3.1],
 		["LeftHand", Vector3.RIGHT, 16.0, 8.1, 0.0], ["LeftHand", Vector3.BACK, 10.0, 7.2, 1.2], ["RightHand", Vector3.RIGHT, 16.0, 7.7, 1.7], ["RightHand", Vector3.BACK, 10.0, 8.4, 2.9],
 		["LeftUpperLeg", Vector3.RIGHT, 1.5, 5.7, 0.8], ["LeftUpperLeg", Vector3.BACK, 2.5, 4.9, 2.4], ["LeftLowerLeg", Vector3.RIGHT, 1.5, 6.6, 1.5],
 		["RightUpperLeg", Vector3.RIGHT, 1.5, 5.2, 2.9], ["RightUpperLeg", Vector3.BACK, 2.5, 5.6, 0.1], ["RightLowerLeg", Vector3.RIGHT, 1.5, 7.1, 3.4],
@@ -246,19 +246,22 @@ func _build_straps() -> void:
 	var at := func(n: String) -> Vector3: return world * skeleton.get_bone_global_pose(bone[n]).origin
 	var table_y := global_position.y
 	var table_x := home.x
-	# (centre, how high her body stands there, half width of the body, strap width, how far the ends run each side past the body)
+	# (centre, how high her body stands there (the strap clears it by ~1.5 cm), half width of the body, strap width, how far the ends run each
+	# side past the body, turn): the forearm straps are turned to cross each forearm square-on, as her arms lie angled away from her body
+	var left_forearm: Vector3 = at.call("LeftHand") - at.call("LeftLowerArm")
+	var right_forearm: Vector3 = at.call("RightHand") - at.call("RightLowerArm")
 	var bands := [
-		[at.call("Spine"), 0.255, 0.20, 0.075, 0.215],
-		[(at.call("LeftLowerArm") + at.call("LeftHand")) * 0.5, 0.113, 0.042, 0.05, 0.06],
-		[(at.call("RightLowerArm") + at.call("RightHand")) * 0.5, 0.113, 0.042, 0.05, 0.06],
-		[(at.call("LeftUpperLeg") + at.call("LeftLowerLeg") + at.call("RightUpperLeg") + at.call("RightLowerLeg")) * 0.25, 0.229, 0.175, 0.075, 0.24],
-		[(at.call("LeftLowerLeg") + at.call("LeftFoot") + at.call("RightLowerLeg") + at.call("RightFoot")) * 0.25, 0.177, 0.17, 0.065, 0.245],
+		[at.call("Spine"), 0.265, 0.215, 0.08, 0.205, 0.0],
+		[(at.call("LeftLowerArm") + at.call("LeftHand")) * 0.5, 0.128, 0.058, 0.06, 0.09, atan2(left_forearm.x, left_forearm.z)],
+		[(at.call("RightLowerArm") + at.call("RightHand")) * 0.5, 0.128, 0.058, 0.06, 0.09, atan2(right_forearm.x, right_forearm.z)],
+		[(at.call("LeftUpperLeg") + at.call("LeftLowerLeg") + at.call("RightUpperLeg") + at.call("RightLowerLeg")) * 0.25, 0.246, 0.205, 0.09, 0.21, 0.0],
+		[(at.call("LeftLowerLeg") + at.call("LeftFoot") + at.call("RightLowerLeg") + at.call("RightFoot")) * 0.25, 0.188, 0.19, 0.07, 0.225, 0.0],
 	]
 	for i in bands.size():
 		var b: Array = bands[i]
 		var centre: Vector3 = b[0]
 		var x := table_x if i == 0 or i >= 3 else centre.x          # along her middle, except the arms, which lie out to the sides
-		_add_strap(leather, metal, Vector3(x, table_y, centre.z), b[1], b[2], b[3], b[4])
+		_add_strap(leather, metal, Vector3(x, table_y, centre.z), b[1], b[2], b[3], b[4], b[5])
 	# over the mouth: a band round the head at the level of her mouth, riding on the head bone
 	var attach := BoneAttachment3D.new()
 	attach.name = "MouthStrap"
@@ -279,7 +282,11 @@ const MOUTH_RING_OFFSET := Vector3(0.0, -0.078, 0.007)      # from the middle of
 
 # One strap over her: it comes up from the table on one side, follows the curve of her body over the top and goes back down the other
 # side, with a buckle on one end. Solid colliders (invisible) hold the same shape, so her body cannot pull up through it.
-func _add_strap(leather: Material, metal: Material, at_table: Vector3, height: float, half: float, width: float, run: float) -> void:
+func _add_strap(leather: Material, metal: Material, at_table: Vector3, height: float, half: float, width: float, run: float, turn: float = 0.0) -> void:
+	var pivot := Node3D.new()
+	pivot.position = at_table
+	pivot.rotation.y = turn
+	_straps.add_child(pivot)
 	var points: Array[Vector2] = []
 	points.append(Vector2(-(half + run), 0.004))
 	points.append(Vector2(-(half + 0.02), 0.004))
@@ -312,34 +319,32 @@ func _add_strap(leather: Material, metal: Material, at_table: Vector3, height: f
 	mi.mesh = st.commit()
 	mi.material_override = leather
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.position = at_table
-	_straps.add_child(mi)
+	pivot.add_child(mi)
 	# the buckle: a small steel plate on the right-hand end
 	var buckle := MeshInstance3D.new()
 	var plate := BoxMesh.new()
 	plate.size = Vector3(0.04, 0.012, width + 0.012)
 	buckle.mesh = plate
 	buckle.material_override = metal
-	buckle.position = at_table + Vector3(half + run * 0.55, 0.01, 0.0)
-	_straps.add_child(buckle)
+	buckle.position = Vector3(half + run * 0.55, 0.01, 0.0)
+	pivot.add_child(buckle)
 	# the colliders: across the top, and down each side
-	var body := StaticBody3D.new()
-	body.name = "StrapSolid"
-	body.position = at_table
+	var solid := StaticBody3D.new()
+	solid.name = "StrapSolid"
 	var top := CollisionShape3D.new()
 	var top_box := BoxShape3D.new()
 	top_box.size = Vector3(half * 2.0 + 0.02, 0.008, width)
 	top.shape = top_box
 	top.position = Vector3(0.0, height + 0.004, 0.0)
-	body.add_child(top)
+	solid.add_child(top)
 	for side in [-1.0, 1.0]:
 		var wall := CollisionShape3D.new()
 		var wall_box := BoxShape3D.new()
 		wall_box.size = Vector3(0.008, height, width)
 		wall.shape = wall_box
 		wall.position = Vector3(side * (half + 0.012), height * 0.5, 0.0)
-		body.add_child(wall)
-	_straps.add_child(body)
+		solid.add_child(wall)
+	pivot.add_child(solid)
 
 
 # An elliptical band standing on its edge, one sheet drawn from both sides: half widths `rx` (across) and `rz` (front to back), `height` tall.
