@@ -219,10 +219,13 @@ func test_knockdown() -> void:
 	check(w.fall_state == Woman.Fall.FALLING and w.knockdowns == 1, "a full-strength punch knocks her down")
 	check(w.lie_timer > weak_lie, "and she stays down longer than after softer ones (%.1f s against %.1f s)" % [w.lie_timer, weak_lie])
 	var strong_lie := w.lie_timer
-	step(w, 2.6)
+	step(w, 0.4)
+	check(w.head_center().y < 1.0, "and she is already going over within 0.4 s (head %.2f m up)" % w.head_center().y)
+	step(w, 2.2)
 	var hips: float = (w.skeleton.global_transform * w.skeleton.get_bone_global_pose(w.bone["Hips"]).origin).y
 	check(w.fall_state == Woman.Fall.LYING, "she is down")
 	check(hips < 0.3 and w.head_center().y < 0.5, "flat on the floor (hips %.2f m, head %.2f m up)" % [hips, w.head_center().y])
+	check(w.head_forward().y > 0.5, "her face is turned up to the ceiling like the rest of her, not held upright (facing %.2f up)" % w.head_forward().y)
 	check(w.head_center().z < -0.4, "fallen away from the punch (head %.2f m back)" % -w.head_center().z)
 	var count := w.hits
 	w.hit(w.head_center(), Vector3(0, 0, -5.0), 1.0)

@@ -52,6 +52,9 @@ const DAMAGE_PER_PUNCH := 1.2                         # times the punch's streng
 const DAMAGE_FADE := 0.35                             # per second
 const KNOCKDOWN_AT := 1.0                             # one full-strength punch, or two or three decent ones close together
 const GET_UP_RATE := 0.8                              # the fall clip played backwards, a bit slower
+const FALL_START := 0.3                               # the clip eases in slowly: start it already part way into the collapse
+const FALL_RATE_MIN := 1.4                            # and play it faster than recorded, faster still for a harder punch
+const FALL_RATE_MAX := 1.8
 const WANDER_RADIUS := 1.2
 const KEEP_AWAY := 0.9                                # wandering never takes her this close to the player
 
@@ -96,6 +99,7 @@ var damage := 0.0
 var lie_timer := 0.0
 var fall_yaw := 0.0                # the way she is turned as she falls so that she goes down the way she was hit
 var knockdowns := 0
+var fall_rate := 1.5
 var fade_length := FADE_TIME
 var wander := false                # stroll about `home` when nothing else is going on
 var home := Vector3.ZERO           # the spot she wanders round
@@ -176,6 +180,7 @@ func _knock_down(velocity: Vector3, strength: float) -> void:
 	fall_state = Fall.FALLING
 	knockdowns += 1
 	lie_timer = 1.5 + 3.5 * clampf(strength, 0.0, 1.0)
+	fall_rate = lerpf(FALL_RATE_MIN, FALL_RATE_MAX, clampf(strength, 0.0, 1.0))
 	var push := Vector3(velocity.x, 0.0, velocity.z)
 	if push.length() < 0.2 and _has_target():
 		push = global_position - target.global_position
@@ -292,11 +297,11 @@ func _add_look(offsets: Array[Quaternion], dt: float) -> void:
 		yaw = clampf(atan2(to_target.x, to_target.z), -MAX_YAW, MAX_YAW)
 		pitch = clampf(atan2(to_target.y, Vector2(to_target.x, to_target.z).length()), -MAX_PITCH_DOWN, MAX_PITCH_UP)
 	# a little idle drift so the head is never perfectly still
-	yaw += 0.02 * sin(time * 0.53) * look_weight
-	pitch += 0.015 * sin(time * 0.71 + 2.0) * look_weight
+	yaw += 0.02 * sin(time * 0.53)
+	pitch += 0.015 * sin(time * 0.71 + 2.0)
 	var follow := 1.0 - exp(-HEAD_RATE * dt)
-	look_yaw += (yaw * look_weight - look_yaw) * follow
-	look_pitch += (pitch * look_weight - look_pitch) * follow
+	look_yaw += (yaw - look_yaw) * follow
+	look_pitch += (pitch - look_pitch) * follow
 	# pitch first about the model's own X axis (looking up is a negative turn about it), then yaw about the vertical
 	var aim := Quaternion(Vector3.UP, look_yaw) * Quaternion(Vector3.RIGHT, -look_pitch)
 	# The clip already holds her spine, neck and head in some pose (and swings the pelvis and spine as she walks). Ask the neck and head
@@ -310,8 +315,9 @@ func _add_look(offsets: Array[Quaternion], dt: float) -> void:
 		needed = -needed
 	var neck_turn := Quaternion.IDENTITY.slerp(needed, LOOK_SHARE["Neck"])
 	var head_turn := clip_head.inverse() * neck_turn.inverse() * (below * clip_neck).inverse() * aim
-	_stack(offsets, "Neck", neck_turn)
-	_stack(offsets, "Head", head_turn)
+	# look_weight blends from "however the clip holds the head" (0: not watching, or lying on the floor) to "exactly at the target" (1)
+	_stack(offsets, "Neck", Quaternion.IDENTITY.slerp(neck_turn, look_weight))
+	_stack(offsets, "Head", Quaternion.IDENTITY.slerp(head_turn, look_weight))
 
 
 func _add_reaction(offsets: Array[Quaternion]) -> void:
@@ -411,13 +417,13 @@ func _update_fall_clip(dt: float) -> void:
 		fade_time = clip_time
 		fade_rate = clip_rate
 		fade = 0.0
-		fade_length = 0.12
+		fade_length = 0.06
 		clip_name = FALL_CLIP
-		clip_time = 0.0
+		clip_time = FALL_START
 	clip_rate = 1.0
 	match fall_state:
 		Fall.FALLING:
-			clip_time = minf(clip_time + dt, length)
+			clip_time = minf(clip_time + dt * fall_rate, length)
 			if clip_time >= length - 0.001:
 				fall_state = Fall.LYING
 		Fall.LYING:
@@ -425,8 +431,8 @@ func _update_fall_clip(dt: float) -> void:
 			if lie_timer <= 0.0:
 				fall_state = Fall.GETTING_UP
 		Fall.GETTING_UP:
-			clip_time = maxf(clip_time - dt * GET_UP_RATE, 0.0)
-			if clip_time <= 0.0:
+			clip_time = maxf(clip_time - dt * GET_UP_RATE, FALL_START)
+			if clip_time <= FALL_START + 0.001:
 				fall_state = Fall.STANDING
 				damage = 0.0
 				pause_timer = maxf(pause_timer, 2.0)
@@ -486,7 +492,7 @@ func _update_movement(dt: float) -> void:
 		staggered = true
 		move_target = null
 		turning_to_face = false
-		if fall_state == Fall.FALLING and clip_time < 0.5:
+		if fall_state == Fall.FALLING and clip_time < 0.9:
 			desired_turn = clampf(wrapf(fall_yaw - rotation.y, -PI, PI) * 12.0, -deg_to_rad(720.0), deg_to_rad(720.0))
 	elif move_target != null:
 		var to_goal: Vector3 = move_target - global_position

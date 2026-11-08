@@ -143,15 +143,15 @@ func test_hit_front() -> void:
 	w.hit(w.head_center() + Vector3(0, -0.02, 0.10), Vector3(0, 0, -4.0), 0.6)
 	check(w.hits == 1, "hit counted")
 	var peak := 0.0
-	var peak_up := 0.0
+	var snap_back := 0.0
 	var weight_low := 1.0
 	for i in int(2.0 * 72):
 		w.update(1.0 / 72.0)
 		peak = maxf(peak, angle_between(w.head_forward(), before))
-		peak_up = maxf(peak_up, w.head_forward().y - before.y)
+		snap_back = maxf(snap_back, -w.hit_angle.x)   # a turn about X the negative way is the head going back and up
 		weight_low = minf(weight_low, w.look_weight)
 	check(peak > 10.0 and peak < 50.0, "head rocks %.0f deg" % peak)
-	check(peak_up > 0.15, "a punch to the face snaps the head back (up by %.2f)" % peak_up)
+	check(snap_back > 0.2, "a punch to the face snaps the head back (%.0f deg)" % rad_to_deg(snap_back))
 	check(weight_low < 0.1, "she loses track of the player for a moment")
 	step(w, 2.0)
 	check(angle_between(w.head_forward(), before) < 4.0, "head settles back (%.1f deg off)" % angle_between(w.head_forward(), before))
