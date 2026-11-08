@@ -292,6 +292,9 @@ func _build_environment() -> void:
 	var wrench := locker.find_child("*used pipe wrench", true, false)   # a prop nobody wants: the wrapper node, and the mesh inside it
 	if wrench != null:
 		wrench.free()
+	var rear_lights := locker.find_child("*rear caged service light", true, false)   # loose light fixture, not attached to anything
+	if rear_lights != null:
+		rear_lights.free()
 	for node in locker.find_children("*", "Light3D", true, false):
 		node.shadow_enabled = false   # shadows from five lights are too much for the headset
 		node.light_energy *= LIGHT_ENERGY_SCALE
