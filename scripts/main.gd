@@ -37,6 +37,7 @@ var settle_frames := 0
 var placed := false
 var resolution_label: Label3D
 var resolution_timer := 0.0
+var overlay_combo_held := false
 
 
 func _ready() -> void:
@@ -69,6 +70,7 @@ func _ready() -> void:
 	camera.current = true
 	rig.add_child(camera)
 	resolution_label = _make_resolution_label()
+	resolution_label.visible = false
 	camera.add_child(resolution_label)
 	woman.target = camera
 
@@ -107,8 +109,14 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var dt := minf(delta, 0.05)
+	if vr:
+		# Press both thumbsticks to toggle the debug overlay; only toggle once per press.
+		var both_sticks_clicked := left_controller.is_button_pressed("primary_click") and right_controller.is_button_pressed("primary_click")
+		if both_sticks_clicked and not overlay_combo_held:
+			resolution_label.visible = not resolution_label.visible
+		overlay_combo_held = both_sticks_clicked
 	resolution_timer -= delta
-	if resolution_timer <= 0.0:
+	if resolution_label.visible and resolution_timer <= 0.0:
 		resolution_timer = 0.5
 		resolution_label.text = _resolution_text()
 	if vr and not placed:
