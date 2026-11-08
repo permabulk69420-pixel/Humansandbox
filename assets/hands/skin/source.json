@@ -1,0 +1,21 @@
+{
+  "base_repository": "https://github.com/makehumancommunity/makehuman",
+  "base_commit": "a8bc2d54ff0ac92e78ff71431b1023eda42bf482",
+  "skin_pack_url": "https://github.com/Makehuman-2/MH2_Asset_Repository_CCO/releases/download/CC0/mh_system_CC0.zip",
+  "skin_pack_entry": "skins/young_caucasian_male/young_lightskinned_male_diffuse.png",
+  "sha256": {
+    "source-base.obj": "8e761e6624b8f54536409135d1636da63b32486a90d4897f84e121d144f6fb4c",
+    "source-weights.json": "0f3641d651ae3d00ad6b4ccee43142edb109d3bd909d27d9e4139ef1beed8625",
+    "skin_diffuse.png": "862a26e335e958b70534cb5f0d7c47ef30ab148a56c42b3e9da969cf76f12963",
+    "mh_system_CC0.zip": "d38970b0a2a06dbcb2d3f55aa3d673c45bc88e7bd1f4afa0368a0782938d55bc"
+  },
+  "license": "CC0-1.0",
+  "source_copyright": [
+    "Data Collection AB (2020)",
+    "Joel Palmius",
+    "Jonas Hauquier"
+  ],
+  "maps": "Skin colour from the CC0 atlas. Roughness and fine normal detail are authored/baked for these hand UVs.",
+  "official_asset_catalog": "https://github.com/makehumancommunity/makehuman-static-website/blob/883f19ca188e1cb458f2907d6f0c81187b9cf7da/content/Assets/AssetPacks/makehuman_system_assets.md",
+  "pack_material_license_entry": "skins/young_caucasian_male/young_caucasian_male.mhmat"
+}
