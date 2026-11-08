@@ -78,7 +78,7 @@ func _ready() -> void:
 		hands = VrHands.new({"left": left_controller, "right": right_controller})
 		KillRoom.apply_anisotropic(left_controller)    # the hand models hang off the controllers
 		KillRoom.apply_anisotropic(right_controller)
-		interactions = HandInteractions.new(hands, room.radio, room.torch)
+		interactions = HandInteractions.new(hands, room.radio, room.torch, room.knife)
 		detector.add_hand("left", left_controller)
 		detector.add_hand("right", right_controller)
 	detector.punched.connect(_on_punched)
