@@ -142,6 +142,10 @@ func _process(delta: float) -> void:
 		interactions.update(dt)
 	if hands != null:
 		hands.update(dt)
+	if room.knife != null and room.knife.held_by != "":
+		woman.knife_tip(room.knife.blade_tip.global_position, dt)     # a blade going into her is a stab
+	else:
+		woman.knife_gone()
 	detector.update(dt, woman)
 
 

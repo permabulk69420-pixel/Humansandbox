@@ -116,6 +116,12 @@ const STRUGGLE_BASE := 0.18             # she is never quite still
 const STRUGGLE_GAIN := 1.0              # how hard she pulls (times the degrees in _add_struggle)
 const STRUGGLE_GAIN_HEAD := 1.0
 const STRUGGLE_MAX := 1.3               # and the most energy a hit can add on top
+const SCREAM := "res://assets/audio/woman_scream.mp3"
+const STAB_SPEED := 1.2                 # m/s: a blade has to be going into her at least this fast to stab (not just resting against her)
+const STAB_COOLDOWN := 0.5              # seconds before the next stab can land
+const FRENZY_TIME := 3.5                # seconds of thrashing after a stab (a second stab adds to it, up to FRENZY_MAX)
+const FRENZY_MAX := 5.0
+const MAX_WOUNDS := 24
 const LEGS_TOGETHER := deg_to_rad(-5.6)  # how far each leg is turned in from the rest pose's slightly open stance
 var strapped := false
 var struggle := 0.0                     # extra struggling after being hit, easing off
@@ -123,6 +129,13 @@ var _wriggle_scale := 1.0
 var _straps: Node3D
 var body: RagdollBody
 var cry: AudioStreamPlayer3D
+var scream: AudioStreamPlayer3D
+var frenzy := 0.0                       # seconds of thrashing left after a stab
+var _wave_time := 0.0                   # the struggle's own clock: it runs faster while she is thrashing
+var _tip_last = null                    # where the blade's tip was last frame (Vector3), or null
+var _stab_cooldown := 0.0
+var _wounds: Array[Node3D] = []
+static var _blood_texture: ImageTexture
 
 
 func _ready() -> void:
@@ -207,8 +220,9 @@ func _lie_on_back(offsets: Array[Quaternion], hips: Vector3) -> Vector3:
 
 # Straining against the straps in bursts: arms and legs pull, the hips twist, the back arches and the head turns from side to side.
 func _add_struggle(offsets: Array[Quaternion]) -> void:
-	var burst := 0.5 + 0.5 * sin(time * 0.85 + 1.6 * sin(time * 0.31))
-	var energy := minf(STRUGGLE_BASE + (1.0 - STRUGGLE_BASE) * smoothstep(0.3, 0.75, burst) + struggle, STRUGGLE_MAX) * _wriggle_scale
+	var thrash := clampf(frenzy / 1.5, 0.0, 1.0)
+	var burst := 0.5 + 0.5 * sin(_wave_time * 0.85 + 1.6 * sin(_wave_time * 0.31))
+	var energy := minf(STRUGGLE_BASE + (1.0 - STRUGGLE_BASE) * smoothstep(0.3, 0.75, burst) + struggle + 0.9 * thrash, STRUGGLE_MAX + 0.7 * thrash) * _wriggle_scale
 	# bone, axis, degrees, rate, phase. Strapped limbs barely move (the straps hold them); the head, hands, feet and hips are what is free
 	var moves := [
 		["Hips", Vector3.UP, 4.0, 4.1, 0.0], ["Hips", Vector3.RIGHT, 1.5, 5.3, 1.1],
@@ -218,14 +232,16 @@ func _add_struggle(offsets: Array[Quaternion]) -> void:
 		["LeftUpperArm", Vector3.BACK, 1.5, 6.2, 0.3], ["LeftUpperArm", Vector3.RIGHT, 1.0, 5.1, 2.2], ["LeftLowerArm", Vector3.BACK, 1.0, 7.3, 1.0],
 		["RightUpperArm", Vector3.BACK, 1.5, 5.7, 2.6], ["RightUpperArm", Vector3.RIGHT, 1.0, 6.6, 0.5], ["RightLowerArm", Vector3.BACK, 1.0, 6.9, 3.1],
 		["LeftHand", Vector3.RIGHT, 16.0, 8.1, 0.0], ["LeftHand", Vector3.BACK, 10.0, 7.2, 1.2], ["RightHand", Vector3.RIGHT, 16.0, 7.7, 1.7], ["RightHand", Vector3.BACK, 10.0, 8.4, 2.9],
-		["LeftUpperLeg", Vector3.RIGHT, 1.5, 5.7, 0.8], ["LeftUpperLeg", Vector3.BACK, 2.5, 4.9, 2.4], ["LeftLowerLeg", Vector3.RIGHT, 1.5, 6.6, 1.5],
-		["RightUpperLeg", Vector3.RIGHT, 1.5, 5.2, 2.9], ["RightUpperLeg", Vector3.BACK, 2.5, 5.6, 0.1], ["RightLowerLeg", Vector3.RIGHT, 1.5, 7.1, 3.4],
+		["LeftUpperLeg", Vector3.RIGHT, 1.5, 5.7, 0.8], ["LeftUpperLeg", Vector3.BACK, 1.8, 4.9, 2.4], ["LeftLowerLeg", Vector3.RIGHT, 1.5, 6.6, 1.5],
+		["RightUpperLeg", Vector3.RIGHT, 1.5, 5.2, 2.9], ["RightUpperLeg", Vector3.BACK, 1.8, 5.6, 0.1], ["RightLowerLeg", Vector3.RIGHT, 1.5, 7.1, 3.4],
 		["LeftFoot", Vector3.RIGHT, 18.0, 7.7, 0.6], ["LeftFoot", Vector3.BACK, 8.0, 6.3, 2.2], ["RightFoot", Vector3.RIGHT, 18.0, 8.3, 2.1], ["RightFoot", Vector3.BACK, 8.0, 7.0, 0.4],
 	]
 	for m in moves:
-		var wave: float = sin(time * m[3] + m[4]) + 0.35 * sin(time * m[3] * 2.3 + m[4] * 1.7)
+		var wave: float = sin(_wave_time * m[3] + m[4]) + 0.35 * sin(_wave_time * m[3] * 2.3 + m[4] * 1.7)
 		var gain := STRUGGLE_GAIN_HEAD if m[0] == "Head" else STRUGGLE_GAIN
-		_stack(offsets, m[0], Quaternion(m[1], deg_to_rad(m[2]) * gain * energy * wave))
+		# in a frenzy only what is free (head, hands, feet) thrashes harder: the straps hold the rest, which keeps its normal range
+		var free: bool = m[0] == "Head" or m[0].ends_with("Hand") or m[0].ends_with("Foot")
+		_stack(offsets, m[0], Quaternion(m[1], deg_to_rad(m[2]) * gain * (energy if free else minf(energy, STRUGGLE_MAX * _wriggle_scale)) * wave))
 
 
 # Leather straps across her, fixed to the table (with solid colliders so she cannot pull through them), and one over her mouth that stays
@@ -256,10 +272,10 @@ func _build_straps() -> void:
 	var right_forearm: Vector3 = at.call("RightHand") - at.call("RightLowerArm")
 	var bands := [
 		[at.call("Spine"), 0.265, 0.215, 0.08, 0.205, 0.0],
-		[(at.call("LeftLowerArm") + at.call("LeftHand")) * 0.5, 0.152, 0.072, 0.06, 0.085, atan2(left_forearm.x, left_forearm.z)],
-		[(at.call("RightLowerArm") + at.call("RightHand")) * 0.5, 0.152, 0.072, 0.06, 0.085, atan2(right_forearm.x, right_forearm.z)],
-		[(at.call("LeftUpperLeg") + at.call("LeftLowerLeg") + at.call("RightUpperLeg") + at.call("RightLowerLeg")) * 0.25, 0.246, 0.245, 0.09, 0.175, 0.0],
-		[(at.call("LeftLowerLeg") + at.call("LeftFoot") + at.call("RightLowerLeg") + at.call("RightFoot")) * 0.25, 0.188, 0.21, 0.07, 0.205, 0.0],
+		[(at.call("LeftLowerArm") + at.call("LeftHand")) * 0.5, 0.158, 0.08, 0.06, 0.08, atan2(left_forearm.x, left_forearm.z)],
+		[(at.call("RightLowerArm") + at.call("RightHand")) * 0.5, 0.158, 0.08, 0.06, 0.08, atan2(right_forearm.x, right_forearm.z)],
+		[(at.call("LeftUpperLeg") + at.call("LeftLowerLeg") + at.call("RightUpperLeg") + at.call("RightLowerLeg")) * 0.25, 0.246, 0.285, 0.09, 0.14, 0.0],
+		[(at.call("LeftLowerLeg") + at.call("LeftFoot") + at.call("RightLowerLeg") + at.call("RightFoot")) * 0.25, 0.188, 0.232, 0.07, 0.185, 0.0],
 	]
 	for i in bands.size():
 		var b: Array = bands[i]
@@ -395,6 +411,145 @@ func _start_crying() -> void:
 	add_child(cry)
 	cry.global_position = head_center()
 	cry.play()
+	var scream_stream := load(SCREAM) as AudioStreamMP3
+	if scream_stream != null:
+		scream = AudioStreamPlayer3D.new()
+		scream.name = "Screaming"
+		scream.stream = scream_stream
+		scream.unit_size = 12.0
+		scream.max_distance = 40.0
+		scream.volume_db = 0.0
+		scream.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		add_child(scream)
+		scream.finished.connect(func() -> void:
+			if cry != null:
+				cry.stream_paused = false)
+
+
+# ---- being stabbed ------------------------------------------------------------------------------------------------------------------------
+
+# Call every frame with where a held blade's tip is (world). When the tip goes into any part of her at speed, that is a stab.
+func knife_tip(tip: Vector3, dt: float) -> void:
+	if not strapped or body == null:
+		_tip_last = null
+		return
+	if _tip_last != null and dt > 0.0:
+		var velocity: Vector3 = (tip - _tip_last) / dt
+		if _stab_cooldown <= 0.0 and velocity.length() >= STAB_SPEED and body.part_at(_tip_last) == null:
+			var part := body.part_at(tip)
+			if part != null:
+				stab(tip, velocity.normalized(), part)
+	_tip_last = tip
+
+
+# The blade is no longer held.
+func knife_gone() -> void:
+	_tip_last = null
+
+
+# A stab at `point`, going in along `direction`, into `part` of her: blood, a scream over her crying, and a burst of thrashing.
+func stab(point: Vector3, direction: Vector3, part: RagdollBody.Part) -> void:
+	_stab_cooldown = STAB_COOLDOWN
+	frenzy = minf(frenzy + FRENZY_TIME, FRENZY_MAX)
+	struggle = minf(2.0, struggle + 1.0)
+	body.push(point, direction * 2.5, 1.0)
+	_add_wound(point, part, direction)
+	if scream != null:
+		if cry != null:
+			cry.stream_paused = true
+		scream.global_position = head_center()
+		scream.play()
+
+
+# Blood at the wound: a stain that spreads out, stuck to the bone it is on (so it moves with her), and a few droplets thrown off.
+func _add_wound(point: Vector3, part: RagdollBody.Part, direction: Vector3) -> void:
+	var axis := part.body.global_basis.y.normalized()
+	var centre := part.body.global_position
+	var along := clampf((point - centre).dot(axis), -part.half_cylinder, part.half_cylinder)
+	var on_axis := centre + axis * along
+	var outward := point - on_axis
+	if outward.length() < 0.002:
+		outward = -direction
+	outward = outward.normalized()
+	var surface := on_axis + outward * (part.radius + 0.004)
+	var up := Vector3.UP if absf(outward.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+	var world_xf := Transform3D(Basis.looking_at(-outward, up), surface)
+	var bone_world: Transform3D = skeleton.global_transform * skeleton.get_bone_global_pose(part.bone)
+	var attach := BoneAttachment3D.new()
+	attach.name = "Wound"
+	attach.bone_name = skeleton.get_bone_name(part.bone)
+	skeleton.add_child(attach)
+	var stain := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.13, 0.13)
+	stain.mesh = quad
+	var mat := StandardMaterial3D.new()
+	if _blood_texture == null:
+		_blood_texture = _make_blood_texture()
+	mat.albedo_texture = _blood_texture
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.roughness = 0.25
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	stain.material_override = mat
+	stain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	stain.transform = bone_world.affine_inverse() * world_xf
+	stain.scale = Vector3.ONE * 0.15
+	attach.add_child(stain)
+	var spread := stain.create_tween()
+	spread.tween_property(stain, "scale", Vector3.ONE * randf_range(0.9, 1.25), 1.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_wounds.append(attach)
+	while _wounds.size() > MAX_WOUNDS:
+		_wounds.pop_front().queue_free()
+	_spray(surface, outward)
+
+
+# A short burst of droplets thrown out of the wound.
+func _spray(at_world: Vector3, outward: Vector3) -> void:
+	var drops := CPUParticles3D.new()
+	drops.one_shot = true
+	drops.emitting = true
+	drops.amount = 36
+	drops.lifetime = 0.7
+	drops.explosiveness = 0.95
+	drops.direction = outward
+	drops.spread = 50.0
+	drops.initial_velocity_min = 0.6
+	drops.initial_velocity_max = 1.7
+	drops.gravity = Vector3(0.0, -9.8, 0.0)
+	drops.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	drops.emission_sphere_radius = 0.01
+	var bead := SphereMesh.new()
+	bead.radius = 0.007
+	bead.height = 0.014
+	bead.radial_segments = 6
+	bead.rings = 3
+	var bead_mat := StandardMaterial3D.new()
+	bead_mat.albedo_color = Color(0.3, 0.02, 0.02)
+	bead_mat.roughness = 0.2
+	bead.material = bead_mat
+	drops.mesh = bead
+	get_parent().add_child(drops)
+	drops.global_position = at_world
+	get_tree().create_timer(1.5).timeout.connect(drops.queue_free)
+
+
+# A soft-edged dark-red splotch, made from noise (no texture file).
+static func _make_blood_texture() -> ImageTexture:
+	var size := 128
+	var noise := FastNoiseLite.new()
+	noise.seed = 19
+	noise.frequency = 0.06
+	noise.fractal_octaves = 4
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var half := size * 0.5
+	for y in size:
+		for x in size:
+			var d := Vector2(x - half, y - half).length() / half
+			var n := noise.get_noise_2d(x, y) * 0.5 + 0.5
+			var a := clampf((1.0 - d * 1.1 + (n - 0.5) * 1.3) * 3.0, 0.0, 1.0)
+			var shade := 0.55 + 0.45 * n
+			img.set_pixel(x, y, Color(0.34 * shade, 0.012, 0.01, a * 0.92))
+	return ImageTexture.create_from_image(img)
 
 
 # ---- the physical body ---------------------------------------------------------------------------------------------------------------------
@@ -525,6 +680,9 @@ func update(dt: float) -> void:
 	var hips_move := _add_clip(offsets)
 	if strapped:
 		struggle = maxf(0.0, struggle - dt * 0.9)
+		frenzy = maxf(0.0, frenzy - dt)
+		_stab_cooldown = maxf(0.0, _stab_cooldown - dt)
+		_wave_time += dt * (1.0 + 1.1 * clampf(frenzy / 1.5, 0.0, 1.0))
 		hips_move = _lie_on_back(offsets, hips_move)
 		_add_struggle(offsets)
 	_add_look(offsets, dt)

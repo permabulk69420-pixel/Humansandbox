@@ -107,3 +107,18 @@ func push(point: Vector3, velocity: Vector3, strength: float) -> void:
 	for part in parts:
 		var near := clampf(1.0 - part.body.global_position.distance_to(point) / 0.45, 0.0, 1.0)
 		part.kick += shove * near * near
+
+
+# The part of her whose capsule `point` is inside (within `margin` of its surface), or null: used to see where a blade went in.
+func part_at(point: Vector3, margin := 0.0) -> Part:
+	var best: Part = null
+	var best_gap := INF
+	for part in parts:
+		var axis := part.body.global_basis.y.normalized()
+		var centre := part.body.global_position
+		var closest := Geometry3D.get_closest_point_to_segment(point, centre - axis * part.half_cylinder, centre + axis * part.half_cylinder)
+		var gap := point.distance_to(closest) - part.radius
+		if gap <= margin and gap < best_gap:
+			best = part
+			best_gap = gap
+	return best
