@@ -99,6 +99,7 @@ func _ready() -> void:
 	_build_pipes()
 	_build_table()
 	_build_rail()
+	_build_rail(X1 - 1.3, -3.4, 1.6)      # a second rail down the east side
 	_build_door()
 	_flush_batches()
 	_build_environment()
@@ -455,6 +456,20 @@ func _build_pipes() -> void:
 			_cyl(pipe, Vector3(X0 + off, y, jz - 0.03), Vector3(X0 + off, y, jz + 0.03), rad * 1.45, tile, 12, true)
 			jz += 3.8
 	_static_box("PipesWest", Vector3(X0 + 0.15, 2.64, (Z0 + Z1) * 0.5), Vector3(0.3, 0.42, Z1 - Z0))
+	# one pipe along the east wall and one along the south wall, the same kind, above the shelves
+	_cyl(pipe, Vector3(X1 - 0.12, 2.55, Z0 - 0.1), Vector3(X1 - 0.12, 2.55, Z1 + 0.1), 0.04, tile, 12, false)
+	_cyl(pipe, Vector3(X0 - 0.1, 2.65, Z1 - 0.12), Vector3(X1 + 0.1, 2.65, Z1 - 0.12), 0.045, tile, 12, false)
+	var bz := Z0 + 1.2
+	while bz < Z1:
+		_box(_batch("steel"), Vector3(X1 - 0.06, 2.55, bz), Vector3(0.12, 0.09, 0.05), _tile("steel"))
+		_cyl(pipe, Vector3(X1 - 0.12, 2.55, bz - 0.03), Vector3(X1 - 0.12, 2.55, bz + 0.03), 0.058, tile, 12, true)
+		bz += 1.8
+	var bx := X0 + 1.4
+	while bx < X1:
+		_box(_batch("steel"), Vector3(bx, 2.65, Z1 - 0.06), Vector3(0.05, 0.1, 0.12), _tile("steel"))
+		bx += 1.7
+	_static_box("PipesEast", Vector3(X1 - 0.15, 2.55, (Z0 + Z1) * 0.5), Vector3(0.3, 0.3, Z1 - Z0))
+	_static_box("PipesSouth", Vector3((X0 + X1) * 0.5, 2.65, Z1 - 0.15), Vector3(X1 - X0, 0.3, 0.3))
 
 
 func _build_table() -> void:
@@ -483,13 +498,10 @@ func _build_table() -> void:
 
 
 # An overhead rail with hooks hanging from it on chains.
-func _build_rail() -> void:
+func _build_rail(rx := X0 + 1.3, z0 := Z0 + 0.8, z1 := Z1 - 0.8) -> void:
 	var steel := _batch("steel")
 	var tile := _tile("steel")
-	var rx := X0 + 1.3
 	var ry := H - 0.38
-	var z0 := Z0 + 0.8
-	var z1 := Z1 - 0.8
 	_box(steel, Vector3(rx, ry, (z0 + z1) * 0.5), Vector3(0.07, 0.1, z1 - z0), tile)
 	var z := z0 + 0.3
 	while z < z1:
@@ -537,8 +549,15 @@ func _build_door() -> void:
 	var db := Batch.new(_materials["door"])
 	var dt := _tile("door")
 	_box(db, Vector3(-dw * 0.5 + 0.0, DOOR_H * 0.5 - 0.02, 0.0), Vector3(dw - 0.02, DOOR_H - 0.05, 0.06), dt)
-	_box(db, Vector3(-dw + 0.12, 1.05, 0.06), Vector3(0.14, 0.03, 0.05), dt)      # handle plate
-	_box(db, Vector3(-dw + 0.12, 1.05, 0.1), Vector3(0.03, 0.14, 0.03), dt)       # handle
+	# a steel lever handle on each face, at the latch edge, pointing back along the door towards the hinge
+	var hb := Batch.new(_materials["steel"])
+	var ht := _tile("steel")
+	var hx := -dw + 0.09
+	for side in [1.0, -1.0]:
+		_cyl(hb, Vector3(hx, 1.05, side * 0.03), Vector3(hx, 1.05, side * 0.046), 0.032, ht, 16, true)          # rose
+		_cyl(hb, Vector3(hx, 1.05, side * 0.046), Vector3(hx, 1.05, side * 0.092), 0.012, ht, 10, true)       # stem
+		_cyl(hb, Vector3(hx, 1.05, side * 0.092), Vector3(hx + 0.14, 1.05, side * 0.092), 0.0105, ht, 10, true) # lever
+		_cyl(hb, Vector3(hx + 0.14, 1.05, side * 0.092), Vector3(hx + 0.15, 1.05, side * 0.092), 0.0105, ht, 10, true, 0.007)
 	var door := Node3D.new()
 	door.name = "Door"
 	door.position = Vector3(DOOR_X1 - 0.01, 0.02, Z0 + 0.03)
@@ -546,6 +565,10 @@ func _build_door() -> void:
 	var dmi := MeshInstance3D.new()
 	dmi.mesh = _commit(db)
 	door.add_child(dmi)
+	var hmi := MeshInstance3D.new()
+	hmi.name = "DoorHandles"
+	hmi.mesh = _commit(hb)
+	door.add_child(hmi)
 	add_child(door)
 	_static_box("DoorSlab", Vector3(-dw * 0.5, DOOR_H * 0.5, 0.0), Vector3(dw - 0.02, DOOR_H - 0.05, 0.1), door)
 
@@ -652,6 +675,10 @@ func _build_props() -> void:
 	add_prop("wooden_crate_01", Vector3(-1.4, 0, Z1 - 0.5), 10.0)
 	add_prop("wooden_crate_01", Vector3(-0.6, 0, Z1 - 0.5), -15.0)
 	add_prop("metal_jerrycan", Vector3(0.6, 0, Z1 - 0.3), 25.0)
+	add_prop("wooden_crate_02", Vector3(X1 - 0.4, 0.01, -2.7), 0.0)
+	add_prop("wooden_crate_02", Vector3(X1 - 0.42, 0.47, -2.7), 4.0, false)
+	add_prop("trashbag", Vector3(X0 + 0.5, 0, Z1 - 0.4), 20.0)
+	add_prop("trashbag", Vector3(X0 + 1.05, 0, Z1 - 0.3), 75.0)
 	# the radio on the shelves, facing into the room, shrunk 5% so its antenna clears the board above
 	radio = Radio.new()
 	radio.name = "Radio"
