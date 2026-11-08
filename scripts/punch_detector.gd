@@ -5,7 +5,7 @@ extends RefCounted
 
 signal punched(hand: String, point: Vector3, velocity: Vector3, strength: float)
 
-const KNUCKLES := 0.075       # metres from the controller out along the fingers (-Z): where the fist actually lands
+const KNUCKLES := 0.05        # metres from the grip pose out along the fingers (-Z): where the fist actually lands
 const MIN_SPEED := 1.5        # m/s: slower than this is a push or a wave, not a punch
 const FULL_SPEED := 6.0       # m/s: a full-strength punch
 const MAX_SPEED := 40.0       # m/s: faster than any arm; a tracking jump or a recenter, not a punch

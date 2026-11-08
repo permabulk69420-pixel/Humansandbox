@@ -200,6 +200,7 @@ func _start_xr() -> bool:
 static func _make_controller(tracker: StringName) -> XRController3D:
 	var controller := XRController3D.new()
 	controller.tracker = tracker
+	controller.pose = &"grip"       # where the hand holds the controller; the default pose is the aim ray, which points out ahead of it
 	controller.name = String(tracker)
 	return controller
 

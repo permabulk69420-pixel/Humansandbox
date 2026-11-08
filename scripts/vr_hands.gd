@@ -69,6 +69,9 @@ func _init(controllers: Dictionary) -> void:
 		s.anchor = Node3D.new()
 		s.anchor.name = "%s-hand-grip-offset" % handedness
 		s.anchor.rotation = Vector3(0.0, 0.0, GRIP_ROTATION[handedness])
+		# The controller's grip pose is where a held thing sits in the palm: put the hand model's own grip socket there (the mesh origin
+		# is at the wrist, about 7 cm behind it).
+		s.anchor.position = -(s.anchor.basis * model.skeleton.get_bone_global_rest(model.grip_bone).origin)
 		s.anchor.add_child(model.root)
 		controller.add_child(s.anchor)
 		s.home = s.anchor.transform

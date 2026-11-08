@@ -304,12 +304,20 @@ func test_hands() -> void:
 	for s in hands.states:
 		var mat := s.model.mesh.material_override as StandardMaterial3D
 		check(mat != null and mat.albedo_texture != null and mat.normal_texture != null, "%s hand has its skin textures" % s.handedness)
+	for s in hands.states:
+		var gap: float = (s.model.socket_global().origin - s.controller.global_position).length()
+		check(gap < 0.01, "%s hand's grip socket sits on the controller's grip point (%.1f cm off)" % [s.handedness, gap * 100.0])
+	check(Main_controller_pose() == &"grip", "controllers use the grip pose, not the aim ray")
 	for c in [left, right]:
 		c.floats = {"trigger": 1.0, "grip": 1.0}
 	hands.update(0.1)
 	check(true, "fists close without errors")
 	left.queue_free()
 	right.queue_free()
+
+
+func Main_controller_pose() -> StringName:
+	return (load("res://scripts/main.gd")._make_controller(&"left_hand") as XRController3D).pose
 
 
 func test_main_scene() -> void:
