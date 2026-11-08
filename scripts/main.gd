@@ -32,6 +32,8 @@ var thud: AudioStreamPlayer3D
 var flat_hit_hand := "right"
 var settle_frames := 0
 var placed := false
+var resolution_label: Label3D
+var resolution_timer := 0.0
 
 
 func _ready() -> void:
@@ -62,6 +64,8 @@ func _ready() -> void:
 	camera.near = 0.05
 	camera.current = true
 	rig.add_child(camera)
+	resolution_label = _make_resolution_label()
+	camera.add_child(resolution_label)
 	woman.target = camera
 
 	if vr:
@@ -86,6 +90,10 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var dt := minf(delta, 0.05)
+	resolution_timer -= delta
+	if resolution_timer <= 0.0:
+		resolution_timer = 0.5
+		resolution_label.text = _resolution_text()
 	if vr and not placed:
 		# the play space's "forward" is wherever you faced when you last recentred, not necessarily where you are looking now:
 		# stand her where you are looking once tracking has settled
@@ -186,6 +194,37 @@ func _on_punched(hand_name: String, point: Vector3, velocity: Vector3, strength:
 
 
 # ---- headset ----------------------------------------------------------------------------------------------------------------------
+
+# A small panel low in your view showing what the headset is actually rendering at.
+static func _make_resolution_label() -> Label3D:
+	var label := Label3D.new()
+	label.name = "ResolutionOverlay"
+	label.position = Vector3(0.0, -0.22, -0.7)
+	label.pixel_size = 0.0006
+	label.font_size = 32
+	label.outline_size = 8
+	label.no_depth_test = true
+	label.render_priority = 10
+	label.modulate = Color(1.0, 1.0, 0.6)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	return label
+
+
+func _resolution_text() -> String:
+	var lines: PackedStringArray = []
+	var viewport := get_viewport()
+	var xr := XRServer.find_interface("OpenXR")
+	if vr and xr != null and xr.is_initialized():
+		var eye := xr.get_render_target_size()
+		lines.append("Eye buffer: %d x %d per eye" % [eye.x, eye.y])
+		lines.append("Multiplier: x%.2f" % float(xr.get("render_target_size_multiplier")))
+		lines.append("Foveation: %d%s" % [int(xr.get("foveation_level")), " dynamic" if xr.get("foveation_dynamic") else ""])
+		lines.append("Refresh: %.0f Hz" % float(xr.get("display_refresh_rate")))
+	lines.append("3D scale: %.2f   MSAA: %s" % [viewport.scaling_3d_scale, ["off", "2x", "4x", "8x"][viewport.msaa_3d]])
+	lines.append("Renderer: %s" % RenderingServer.get_current_rendering_method())
+	lines.append("FPS: %d" % Engine.get_frames_per_second())
+	return "\n".join(lines)
+
 
 # Starts OpenXR if there is a headset to talk to. Returns false (and plays on a flat screen) if there is not.
 func _start_xr() -> bool:
