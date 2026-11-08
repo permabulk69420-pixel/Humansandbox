@@ -1,4 +1,4 @@
-# What the hands do with the things in the room: pick up the blowtorch (grip button), light it (trigger), flick the radio's switch.
+# Grip picks up the nearest free handle; trigger lights the blowtorch; fingers can flick the radio's switch.
 # It works on any hand state VrHands has, so it needs nothing but a controller that can answer get_float("grip") and get_float("trigger").
 class_name HandInteractions
 extends RefCounted
@@ -10,37 +10,57 @@ const GRAB_RADIUS := 0.14              # metres from the torch's handle a hand c
 var hands: VrHands
 var radio: Radio
 var torch: Blowtorch
+var knife: KitchenKnife
 var _last_squeeze := {}
 
 
-func _init(p_hands: VrHands, p_radio: Radio, p_torch: Blowtorch) -> void:
+func _init(p_hands: VrHands, p_radio: Radio, p_torch: Blowtorch, p_knife: KitchenKnife = null) -> void:
 	hands = p_hands
 	radio = p_radio
 	torch = p_torch
+	knife = p_knife
 
 
 # Call once a frame, before VrHands.update() so the poses it chooses are used straight away.
 func update(dt: float) -> void:
 	for s in hands.states:
-		if not s.tracked():
-			continue
 		var hand: String = s.handedness
+		var held_prop = null
+		for prop in [torch, knife]:
+			if prop != null and prop.held_by == hand:
+				held_prop = prop
+		if not s.tracked():
+			if held_prop != null:
+				held_prop.release()
+				s.hold = null
+			_last_squeeze.erase(hand)
+			continue
 		var squeeze: float = s.squeeze()
 		var trigger: float = s.trigger()
 		var was: float = _last_squeeze.get(hand, 0.0)
 		_last_squeeze[hand] = squeeze
-		var holding := torch != null and torch.held_by == hand
+		var holding := held_prop != null
 		if holding:
-			torch.set_trigger(trigger)
+			if held_prop == torch:
+				torch.set_trigger(trigger)
 			if squeeze < GRAB_OFF:
-				torch.release()
+				held_prop.release()
 				s.hold = null
 				holding = false
-		elif torch != null and torch.held_by == "" and squeeze > GRAB_ON and was <= GRAB_ON:
-			if torch.grab_distance(s.controller.global_position) < GRAB_RADIUS:
-				torch.grab(hand, s.controller)
-				if torch.held_by == hand:
-					s.hold = torch.finger_amounts(hand)
+		elif squeeze > GRAB_ON and was <= GRAB_ON:
+			var nearest = null
+			var distance := GRAB_RADIUS
+			for prop in [torch, knife]:
+				if prop == null or prop.held_by != "":
+					continue
+				var candidate: float = prop.grab_distance(s.controller.global_position)
+				if candidate < distance:
+					nearest = prop
+					distance = candidate
+			if nearest != null:
+				nearest.grab(hand, s.controller)
+				if nearest.held_by == hand:
+					s.hold = nearest.finger_amounts(hand)
 					s.hold_blend = 0.0
 					holding = true
 		if holding:

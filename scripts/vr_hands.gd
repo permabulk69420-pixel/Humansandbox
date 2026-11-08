@@ -144,7 +144,8 @@ func _update_pose(s: HandState, dt: float) -> void:
 			if finger == "index":
 				target = lerpf(s.hold.get("index_released", 0.0), s.hold.get("index_pressed", 0.0), clampf(trigger * 1.1, 0.0, 1.0))
 				start = 0.65 * trigger
-			var amount := lerpf(start, target, settle)
+			# A thin handle may stop a finger before the normal starting curl. Never begin beyond the fitted contact pose.
+			var amount := lerpf(minf(start, target), target, settle)
 			for j: Joint in s.joints[finger]:
 				s.model.set_joint(j.bone, amount, j.open, j.grip, j.fist)
 		return

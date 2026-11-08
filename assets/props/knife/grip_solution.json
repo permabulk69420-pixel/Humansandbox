@@ -1,0 +1,61 @@
+{
+  "scale": 1.0,
+  "model": "kitchen_knife.glb",
+  "forward": "-Z",
+  "up": "+Y",
+  "method": "Real skinned hand vertex/edge/face samples against 1.5 mm knife SDF; full closure path checked. Trigger does not change knife grip.",
+  "left": {
+    "yaw": 0.0,
+    "pitch": 70.0,
+    "roll": 0.0,
+    "offset": [
+      0.015,
+      -0.011,
+      0.0
+    ],
+    "fingers": {
+      "thumb": 0.7,
+      "index_released": 0.25,
+      "index_pressed": 0.25,
+      "middle": 0.7,
+      "ring": 0.65,
+      "pinky": 0.65
+    },
+    "clearance_mm": {
+      "thumb": 1.547,
+      "index": 1.902,
+      "middle": 1.01,
+      "ring": 2.378,
+      "pinky": 3.239
+    },
+    "palm_clearance_mm": -0.354,
+    "handle_contacts": 5
+  },
+  "right": {
+    "yaw": 9.0,
+    "pitch": 70.0,
+    "roll": 0.0,
+    "offset": [
+      -0.015,
+      -0.012,
+      0.0
+    ],
+    "fingers": {
+      "thumb": 0.7,
+      "index_released": 0.575,
+      "index_pressed": 0.575,
+      "middle": 0.675,
+      "ring": 0.65,
+      "pinky": 0.65
+    },
+    "clearance_mm": {
+      "thumb": -0.224,
+      "index": 0.859,
+      "middle": 3.417,
+      "ring": 1.951,
+      "pinky": 2.283
+    },
+    "palm_clearance_mm": 0.179,
+    "handle_contacts": 5
+  }
+}
