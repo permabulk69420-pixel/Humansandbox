@@ -631,7 +631,7 @@ func _build_lights() -> void:
 
 func _build_props() -> void:
 	add_prop("steel_frame_shelves_01", Vector3(X1 - 0.3, 0, -5.4), -90.0, true, true, 2.14)
-	add_prop("industrial_storage_cart", Vector3(X0 + 0.7, 0, -1.2), 90.0)
+	add_prop("industrial_storage_cart", Vector3(X0 + 0.7, 0, -1.2), 90.0, true, true, 0.95)
 	add_prop("BarberShopChair_01", Vector3(-2.6, 0, -3.6), 90.0)
 	add_prop("wheelchair_01", Vector3(-2.9, 0, 1.7), -40.0)
 	add_prop("metal_stool_01", Vector3(-0.95, 0, -4.1), 15.0)
