@@ -13,8 +13,8 @@ const MOVE_SPEED := 1.6            # m/s walking with the left stick (or WASD)
 const TURN_SPEED := deg_to_rad(110.0)   # rad/s turning with the right stick (or Q/E, the arrow keys)
 const STICK_DEADZONE := 0.2
 const PERSONAL_SPACE := 0.45       # walking cannot take you closer than this to her
-const ROOM_MIN := Vector2(KillRoom.X0 + 0.3, KillRoom.Z0 + 0.3)   # the walls, as a backstop in case the collision ever lets you through (x, z)
-const ROOM_MAX := Vector2(KillRoom.X1 - 0.3, KillRoom.Z1 - 0.3)
+const ROOM_MIN := Vector2(KillRoom.HALL_X0 + 0.3, KillRoom.HALL_ZN + 0.3)   # the walls (room and hallway), as a backstop in case the collision ever lets you through (x, z)
+const ROOM_MAX := Vector2(KillRoom.HALL_X1 - 0.3, KillRoom.Z1 - 0.3)
 const BODY_RADIUS := 0.28          # your body, for bumping into the room and its props
 const BODY_HEIGHT := 1.6
 const BODY_LIFT := 0.15            # it floats this far off the floor, so low things (the drain cover, a threshold) do not stop you
@@ -78,7 +78,7 @@ func _ready() -> void:
 		hands = VrHands.new({"left": left_controller, "right": right_controller})
 		KillRoom.apply_anisotropic(left_controller)    # the hand models hang off the controllers
 		KillRoom.apply_anisotropic(right_controller)
-		interactions = HandInteractions.new(hands, room.radio, room.torch, room.knife)
+		interactions = HandInteractions.new(hands, room.radio, room.torch, room.knife, room.door)
 		detector.add_hand("left", left_controller)
 		detector.add_hand("right", right_controller)
 	detector.punched.connect(_on_punched)

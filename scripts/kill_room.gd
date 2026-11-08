@@ -19,7 +19,13 @@ const TRIM := 0.06
 const DOOR_X0 := -2.05
 const DOOR_X1 := -0.95
 const DOOR_H := 2.15
-const CORRIDOR_DEPTH := 2.2
+const WALL_T := 0.4                  # how thick the walls are (the collision slabs outside the room)
+const HALL_W := 2.4                  # the hallway behind the door runs along the north wall, this wide...
+const HALL_RUN := 15.0               # ...and this far each way from the door
+const HALL_X0 := (DOOR_X0 + DOOR_X1) * 0.5 - HALL_RUN
+const HALL_X1 := (DOOR_X0 + DOOR_X1) * 0.5 + HALL_RUN
+const HALL_ZS := Z0 - WALL_T         # its south wall: the back of the room's north wall
+const HALL_ZN := Z0 - WALL_T - HALL_W   # its north wall
 const BEAM_Z: Array[float] = [-7.0, -4.9, -0.7, 1.4]    # steel beams under the ceiling, wall to wall
 const BEAM_DROP := 0.26
 
@@ -62,6 +68,7 @@ var collision_root: Node3D
 var radio: Radio
 var torch: Blowtorch
 var knife: KitchenKnife
+var door: HingedDoor
 var _materials := {}
 var _batches := {}
 var _noise := FastNoiseLite.new()
@@ -102,6 +109,7 @@ func _ready() -> void:
 	_build_rail()
 	_build_rail(X1 - 1.3, -3.4, 1.6)      # a second rail down the east side
 	_build_door()
+	_build_hallway()
 	_flush_batches()
 	_build_environment()
 	_build_lights()
@@ -384,7 +392,7 @@ func _static_box(box_name: String, center: Vector3, size: Vector3, parent: Node 
 
 # A wall piece between two points on the floor plan, as seen from inside the room: `left` is on your left. Tile below, a trim strip,
 # plaster above.
-func _wall(left: Vector2, right: Vector2, ya: float, yb: float) -> void:
+func _wall(left: Vector2, right: Vector2, ya: float, yb: float, store = null) -> void:
 	var spans := [["tile", 0.0, TILE_TOP], ["steel", TILE_TOP, TILE_TOP + TRIM], ["plaster", TILE_TOP + TRIM, H]]
 	for s in spans:
 		var lo := maxf(ya, s[1])
@@ -397,7 +405,12 @@ func _wall(left: Vector2, right: Vector2, ya: float, yb: float) -> void:
 		var br := Vector3(right.x, lo, right.y)
 		var bl := Vector3(left.x, lo, left.y)
 		var tile := _tile(key)
-		_quad(_batch(key), tl, tr, br, bl, tile, Vector2(left.x + left.y, s[2] - hi) / tile, 0.5, "wall" if key != "steel" else "")
+		var target: Batch = _batch(key)
+		if store != null:
+			if not store.has(key):
+				store[key] = Batch.new(_materials[key])
+			target = store[key]
+		_quad(target, tl, tr, br, bl, tile, Vector2(left.x + left.y, s[2] - hi) / tile, 0.5, "wall" if key != "steel" else "")
 
 
 func _build_shell() -> void:
@@ -412,7 +425,7 @@ func _build_shell() -> void:
 	_wall(Vector2(X0, Z1), Vector2(X0, Z0), 0.0, H)               # west
 	_wall(Vector2(X1, Z0), Vector2(X1, Z1), 0.0, H)               # east
 	# collision: thick slabs outside the room, so nothing gets through a corner
-	var t := 0.4
+	var t := WALL_T
 	var w := X1 - X0
 	var l := Z1 - Z0
 	_static_box("Floor", Vector3(0, -t * 0.5, (Z0 + Z1) * 0.5), Vector3(w + 2 * t, t, l + 2 * t))
@@ -423,8 +436,6 @@ func _build_shell() -> void:
 	_static_box("WallNorthLeft", Vector3((X0 + DOOR_X0) * 0.5 - t * 0.5, H * 0.5, Z0 - t * 0.5), Vector3(DOOR_X0 - X0 + t, H, t))
 	_static_box("WallNorthRight", Vector3((DOOR_X1 + X1) * 0.5 + t * 0.5, H * 0.5, Z0 - t * 0.5), Vector3(X1 - DOOR_X1 + t, H, t))
 	_static_box("WallNorthLintel", Vector3((DOOR_X0 + DOOR_X1) * 0.5, (DOOR_H + H) * 0.5, Z0 - t * 0.5), Vector3(DOOR_X1 - DOOR_X0, H - DOOR_H, t))
-	# nobody walks into the dark behind the door
-	_static_box("DoorwayBlock", Vector3((DOOR_X0 + DOOR_X1) * 0.5, DOOR_H * 0.5, Z0 - 0.3), Vector3(DOOR_X1 - DOOR_X0 + 0.2, DOOR_H, 0.6))
 
 
 func _build_beams() -> void:
@@ -538,15 +549,7 @@ func _build_door() -> void:
 	_box(steel, Vector3(DOOR_X0 - 0.05, DOOR_H * 0.5, Z0 + 0.04), Vector3(0.1, DOOR_H, 0.12), tile)
 	_box(steel, Vector3(DOOR_X1 + 0.05, DOOR_H * 0.5, Z0 + 0.04), Vector3(0.1, DOOR_H, 0.12), tile)
 	_box(steel, Vector3(cx, DOOR_H + 0.05, Z0 + 0.04), Vector3(dw + 0.2, 0.1, 0.12), tile)
-	# the corridor behind: a concrete box nobody can enter, so the opening is not a hole in the world
-	var cc := _batch("ceiling")
-	var zb := Z0 - CORRIDOR_DEPTH
-	_quad(cc, Vector3(DOOR_X0, DOOR_H, Z0), Vector3(DOOR_X0, DOOR_H, zb), Vector3(DOOR_X0, 0, zb), Vector3(DOOR_X0, 0, Z0), 2.0)    # left side, facing +x
-	_quad(cc, Vector3(DOOR_X1, DOOR_H, zb), Vector3(DOOR_X1, DOOR_H, Z0), Vector3(DOOR_X1, 0, Z0), Vector3(DOOR_X1, 0, zb), 2.0)    # right side, facing -x
-	_quad(cc, Vector3(DOOR_X0, DOOR_H, zb), Vector3(DOOR_X1, DOOR_H, zb), Vector3(DOOR_X1, 0, zb), Vector3(DOOR_X0, 0, zb), 2.0)    # far end, facing +z
-	_quad(cc, Vector3(DOOR_X0, DOOR_H, Z0), Vector3(DOOR_X1, DOOR_H, Z0), Vector3(DOOR_X1, DOOR_H, zb), Vector3(DOOR_X0, DOOR_H, zb), 2.0)  # ceiling... facing down
-	_quad(_batch("floor"), Vector3(DOOR_X0, 0, zb), Vector3(DOOR_X1, 0, zb), Vector3(DOOR_X1, 0, Z0), Vector3(DOOR_X0, 0, Z0), 3.0)  # floor, facing up
-	# the door itself, hinged on the right, standing a little open
+	# the door itself, hinged on the right
 	var db := Batch.new(_materials["door"])
 	var dt := _tile("door")
 	_box(db, Vector3(-dw * 0.5 + 0.0, DOOR_H * 0.5 - 0.02, 0.0), Vector3(dw - 0.02, DOOR_H - 0.05, 0.06), dt)
@@ -559,10 +562,11 @@ func _build_door() -> void:
 		_cyl(hb, Vector3(hx, 1.05, side * 0.046), Vector3(hx, 1.05, side * 0.092), 0.012, ht, 10, true)       # stem
 		_cyl(hb, Vector3(hx, 1.05, side * 0.092), Vector3(hx + 0.14, 1.05, side * 0.092), 0.0105, ht, 10, true) # lever
 		_cyl(hb, Vector3(hx + 0.14, 1.05, side * 0.092), Vector3(hx + 0.15, 1.05, side * 0.092), 0.0105, ht, 10, true, 0.007)
-	var door := Node3D.new()
+	door = HingedDoor.new()
 	door.name = "Door"
 	door.position = Vector3(DOOR_X1 - 0.01, 0.02, Z0 + 0.03)
-	door.rotation.y = deg_to_rad(24.0)
+	door.handles.append(Vector3(hx + 0.07, 1.05, 0.092))      # the middle of each lever
+	door.handles.append(Vector3(hx + 0.07, 1.05, -0.092))
 	var dmi := MeshInstance3D.new()
 	dmi.mesh = _commit(db)
 	door.add_child(dmi)
@@ -572,6 +576,83 @@ func _build_door() -> void:
 	door.add_child(hmi)
 	add_child(door)
 	_static_box("DoorSlab", Vector3(-dw * 0.5, DOOR_H * 0.5, 0.0), Vector3(dw - 0.02, DOOR_H - 0.05, 0.1), door)
+
+
+# ---- the hallway ----------------------------------------------------------------------------------------------------------------------
+
+# The hallway behind the door: it runs along the north wall, both ways, in short pieces. Each piece is its own mesh so that it only catches
+# the few lights near it (a lit mesh can take 8 lights at a time in this renderer, and the room's big meshes already take several).
+func _build_hallway() -> void:
+	var c := (DOOR_X0 + DOOR_X1) * 0.5
+	var edges: Array[float] = [c - HALL_RUN]
+	var step := (HALL_RUN - 2.5) / 3.0
+	for i in 3:
+		edges.append(edges[-1] + step)
+	edges.append(c + 2.5)                  # the piece the door is in is 5 m wide, centred on it
+	for i in 3:
+		edges.append(edges[-1] + step)
+	var ft := _tile("floor")
+	var ct := _tile("ceiling")
+	for i in edges.size() - 1:
+		var xa := edges[i]
+		var xb := edges[i + 1]
+		var has_door := xa < DOOR_X0 and xb > DOOR_X1
+		var zs := Z0 if has_door else HALL_ZS        # floor and ceiling run on through the doorway
+		var floor_b := Batch.new(_materials["floor"])
+		var ceil_b := Batch.new(_materials["ceiling"])
+		var walls := {}                              # the room's own tile, trim and plaster, in this piece's own meshes
+		_quad(floor_b, Vector3(xa, 0, HALL_ZN), Vector3(xb, 0, HALL_ZN), Vector3(xb, 0, zs), Vector3(xa, 0, zs), ft, Vector2(xa, HALL_ZN) / ft, 0.5, "floor")
+		_quad(ceil_b, Vector3(xa, H, zs), Vector3(xb, H, zs), Vector3(xb, H, HALL_ZN), Vector3(xa, H, HALL_ZN), ct, Vector2(xa, HALL_ZN) / ct, 0.5, "ceiling")
+		_wall(Vector2(xa, HALL_ZN), Vector2(xb, HALL_ZN), 0.0, H, walls)            # north wall, as seen from inside the hallway
+		if has_door:
+			# the back of the room's wall, with the doorway cut out of it
+			_wall(Vector2(DOOR_X0, HALL_ZS), Vector2(xa, HALL_ZS), 0.0, H, walls)
+			_wall(Vector2(xb, HALL_ZS), Vector2(DOOR_X1, HALL_ZS), 0.0, H, walls)
+			_wall(Vector2(DOOR_X1, HALL_ZS), Vector2(DOOR_X0, HALL_ZS), DOOR_H, H, walls)
+			# the thickness of the wall round the doorway
+			_quad(ceil_b, Vector3(DOOR_X0, DOOR_H, Z0), Vector3(DOOR_X0, DOOR_H, HALL_ZS), Vector3(DOOR_X0, 0, HALL_ZS), Vector3(DOOR_X0, 0, Z0), 2.0)
+			_quad(ceil_b, Vector3(DOOR_X1, DOOR_H, HALL_ZS), Vector3(DOOR_X1, DOOR_H, Z0), Vector3(DOOR_X1, 0, Z0), Vector3(DOOR_X1, 0, HALL_ZS), 2.0)
+			_quad(ceil_b, Vector3(DOOR_X0, DOOR_H, Z0), Vector3(DOOR_X1, DOOR_H, Z0), Vector3(DOOR_X1, DOOR_H, HALL_ZS), Vector3(DOOR_X0, DOOR_H, HALL_ZS), 2.0)
+		else:
+			_wall(Vector2(xb, HALL_ZS), Vector2(xa, HALL_ZS), 0.0, H, walls)
+		if i == 0:                                   # the west end
+			_wall(Vector2(xa, HALL_ZS), Vector2(xa, HALL_ZN), 0.0, H, walls)
+		if i == edges.size() - 2:                    # the east end
+			_wall(Vector2(xb, HALL_ZN), Vector2(xb, HALL_ZS), 0.0, H, walls)
+		var batches: Array = [floor_b, ceil_b]
+		batches.append_array(walls.values())
+		for b in batches:
+			var mi := MeshInstance3D.new()
+			mi.name = "Hallway%d" % i
+			mi.mesh = _commit(b)
+			add_child(mi)
+	# solid walls, floor and ceiling, so nothing goes through them
+	var mid_z := (HALL_ZN + HALL_ZS) * 0.5
+	var span_x := HALL_X1 - HALL_X0
+	_static_box("HallNorth", Vector3((HALL_X0 + HALL_X1) * 0.5, H * 0.5, HALL_ZN - 0.3), Vector3(span_x + 1.2, H, 0.6))
+	_static_box("HallWest", Vector3(HALL_X0 - 0.3, H * 0.5, (HALL_ZN - 0.6 + Z0) * 0.5), Vector3(0.6, H, Z0 - HALL_ZN + 0.6))
+	_static_box("HallEast", Vector3(HALL_X1 + 0.3, H * 0.5, (HALL_ZN - 0.6 + Z0) * 0.5), Vector3(0.6, H, Z0 - HALL_ZN + 0.6))
+	var west_len := (X0 - WALL_T) - (HALL_X0 - 0.6)
+	var east_len := (HALL_X1 + 0.6) - (X1 + WALL_T)
+	_static_box("HallSouthWest", Vector3(HALL_X0 - 0.6 + west_len * 0.5, H * 0.5, HALL_ZS + 0.3), Vector3(west_len, H, 0.6))
+	_static_box("HallSouthEast", Vector3(X1 + WALL_T + east_len * 0.5, H * 0.5, HALL_ZS + 0.3), Vector3(east_len, H, 0.6))
+	_static_box("HallFloor", Vector3((HALL_X0 + HALL_X1) * 0.5, -0.2, (HALL_ZN + Z0) * 0.5), Vector3(span_x + 1.2, 0.4, Z0 - HALL_ZN + 0.6))
+	_static_box("HallCeiling", Vector3((HALL_X0 + HALL_X1) * 0.5, H + 0.2, (HALL_ZN + Z0) * 0.5), Vector3(span_x + 1.2, 0.4, Z0 - HALL_ZN + 0.6))
+	# a caged light every 5 m down the middle, the same cold green as the one by the door; the ends are left dark
+	for k in range(-2, 3):
+		var x := c + 5.0 * k
+		var fixture := _load_model("caged_hanging_light")
+		if fixture != null:
+			fixture.position = Vector3(x, H, mid_z)
+			add_child(fixture)
+			_set_shadows(fixture, false)
+		var lamp := OmniLight3D.new()
+		lamp.name = "HallLight%d" % (k + 2)
+		lamp.position = Vector3(x, H - 0.7, mid_z)
+		lamp.light_color = Color(0.7, 1.0, 0.82)
+		lamp.light_energy = 0.85
+		lamp.omni_range = 5.5
+		add_child(lamp)
 
 
 # ---- environment and lights ------------------------------------------------------------------------------------------------------------
