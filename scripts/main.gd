@@ -11,7 +11,11 @@ const MOVE_SPEED := 1.6            # m/s walking with the left stick (or WASD)
 const TURN_SPEED := deg_to_rad(110.0)   # rad/s turning with the right stick (or Q/E, the arrow keys)
 const STICK_DEADZONE := 0.2
 const PERSONAL_SPACE := 0.45       # walking cannot take you closer than this to her
-const ARENA := 15.0                # and you cannot walk off the edge of the floor
+const LOCKER := "res://exports/meat_locker/Meat_Locker_Industrial.glb"   # the room: the full-size industrial meat locker
+const ROOM_MIN := Vector2(-5.8, -9.2)   # you cannot walk through the locker's walls (x, z, metres)
+const ROOM_MAX := Vector2(5.8, 9.0)
+const LIGHT_ENERGY_SCALE := 0.003   # the model's lights are written in physical units (hundreds), far too bright as Godot energies...
+const LIGHT_RANGE := 10.0           # ...and reach 4 km; give each a reach of about the room instead
 const EYE_HEIGHT := 1.62           # flat-screen camera height
 
 var vr := false
@@ -143,13 +147,13 @@ func locomote(move: Vector2, turn: float, dt: float) -> void:
 		right.y = 0.0
 		var heading := (forward.normalized() * move.y + right.normalized() * move.x) if forward.length() > 0.01 else Vector3.ZERO
 		rig.global_position += heading * MOVE_SPEED * dt
-		# you cannot walk through her, or off the floor
+		# you cannot walk through her, or through the walls
 		var away := Vector2(camera.global_position.x - woman.global_position.x, camera.global_position.z - woman.global_position.z)
 		if away.length() < PERSONAL_SPACE:
 			var push := (away.normalized() if away.length() > 0.001 else Vector2.DOWN) * (PERSONAL_SPACE - away.length())
 			rig.global_position += Vector3(push.x, 0.0, push.y)
-		rig.global_position.x = clampf(rig.global_position.x, -ARENA, ARENA)
-		rig.global_position.z = clampf(rig.global_position.z, -ARENA, ARENA)
+		rig.global_position.x = clampf(rig.global_position.x, ROOM_MIN.x, ROOM_MAX.x)
+		rig.global_position.z = clampf(rig.global_position.z, ROOM_MIN.y, ROOM_MAX.y)
 
 
 static func placement(camera_position: Vector3, camera_forward: Vector3, floor_y: float, distance: float) -> Transform3D:
@@ -208,38 +212,27 @@ static func _make_controller(tracker: StringName) -> XRController3D:
 # ---- the room ---------------------------------------------------------------------------------------------------------------------
 
 func _build_environment() -> void:
-	var sky_material := ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Color(0.30, 0.46, 0.68)
-	sky_material.sky_horizon_color = Color(0.72, 0.78, 0.84)
-	sky_material.ground_horizon_color = Color(0.45, 0.47, 0.50)
-	sky_material.ground_bottom_color = Color(0.22, 0.23, 0.25)
-	var sky := Sky.new()
-	sky.sky_material = sky_material
+	# the locker brings its own floor, walls and lights; around it is just darkness and a faint glow so nothing is pitch black
 	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.75
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.02, 0.02, 0.025)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.55, 0.62, 0.62)
+	env.ambient_light_energy = 0.35
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
-	var sun := DirectionalLight3D.new()
-	sun.light_energy = 0.9
-	sun.rotation_degrees = Vector3(-50.0, -25.0, 0.0)
-	sun.shadow_enabled = false
-	add_child(sun)
-
-	var floor_material := StandardMaterial3D.new()
-	floor_material.albedo_color = Color(0.30, 0.31, 0.33)
-	floor_material.roughness = 1.0
-	var floor_mesh := PlaneMesh.new()
-	floor_mesh.size = Vector2(40.0, 40.0)
-	floor_mesh.material = floor_material
-	var floor_node := MeshInstance3D.new()
-	floor_node.mesh = floor_mesh
-	floor_node.name = "Floor"
-	add_child(floor_node)
+	var locker: Node3D = (load(LOCKER) as PackedScene).instantiate()
+	locker.name = "MeatLocker"
+	add_child(locker)
+	for node in locker.find_children("*", "Camera3D", true, false):
+		node.free()   # the model carries its own preview cameras; you are the camera here
+	for node in locker.find_children("*", "Light3D", true, false):
+		node.shadow_enabled = false   # shadows from five lights are too much for the headset
+		node.light_energy *= LIGHT_ENERGY_SCALE
+		if node is OmniLight3D:
+			node.omni_range = LIGHT_RANGE
 
 
 # A dull thud for a punch landing, made in code: a falling low tone with a burst of noise on the front.

@@ -346,7 +346,7 @@ func test_player_movement() -> void:
 	rig.rotation.y = deg_to_rad(-90.0)
 	for i in 60 * 20:
 		main.locomote(Vector2(0, 1), 0.0, 1.0 / 60.0)
-	check(rig.global_position.x <= main.ARENA + 0.01, "and you stop at the edge of the floor (%.1f m)" % rig.global_position.x)
+	check(rig.global_position.x <= main.ROOM_MAX.x + 0.01, "and you stop at the wall (%.1f m)" % rig.global_position.x)
 	main.queue_free()
 
 
