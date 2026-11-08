@@ -3,7 +3,8 @@
 # turns. On a flat screen the camera stands where you would: WASD walks, Q/E or the arrow keys turn, and Space or a click throws a punch.
 extends Node3D
 
-const REFRESH_RATE := 90.0
+const REFRESH_RATE := 72.0          # SpaceWarp needs the display at a rate it can evenly halve; Meta's own example is 72 Hz display / 36 fps render
+var space_warp: Object = null       # OpenXRFbSpaceWarpExtension singleton, if the runtime and build support it
 const RENDER_SCALE := 1.5          # headset render resolution as a multiple of the Quest's recommended size, per eye
 const WOMAN_DISTANCE := 0.8        # metres in front of you; she faces +Z, so by default she faces the play-space centre
 const SETTLE_FRAMES := 30          # let headset tracking settle before reading where you are looking
@@ -79,7 +80,17 @@ func _ready() -> void:
 		var xr := XRServer.find_interface("OpenXR")
 		if xr != null and xr.has_signal("pose_recentered"):
 			# recentring the headset brings her back in front of you
-			xr.connect("pose_recentered", func() -> void: get_tree().create_timer(0.3).timeout.connect(place_woman))
+			xr.connect("pose_recentered", func() -> void:
+				_skip_space_warp_frame()
+				get_tree().create_timer(0.3).timeout.connect(place_woman))
+		# Application SpaceWarp: the runtime renders real frames at half rate and fills in the rest itself. It needs the play
+		# space to hold still between frames, so locomote() tells it to skip a frame whenever you walk or turn.
+		if Engine.has_singleton("OpenXRFbSpaceWarpExtension"):
+			space_warp = Engine.get_singleton("OpenXRFbSpaceWarpExtension")
+			if space_warp.has_method("set_space_warp_enabled"):
+				space_warp.set_space_warp_enabled(true)
+			else:
+				space_warp = null
 
 	thud = AudioStreamPlayer3D.new()
 	thud.stream = _make_thud()
@@ -145,6 +156,8 @@ static func stick_value(raw: Vector2) -> Vector2:
 # Walk (move.y forward, move.x right, relative to where you are looking) and turn (+ is right). Turning pivots on your head, so the room
 # does not swing round you. Everything you hold moves with the play space.
 func locomote(move: Vector2, turn: float, dt: float) -> void:
+	if absf(turn) > 0.001 or move.length() > 0.001:
+		_skip_space_warp_frame()
 	if absf(turn) > 0.001:
 		var angle := -turn * TURN_SPEED * dt
 		var pivot := camera.global_position
@@ -191,6 +204,11 @@ func _on_punched(hand_name: String, point: Vector3, velocity: Vector3, strength:
 	var controller: XRController3D = left_controller if hand_name == "left" else right_controller
 	if controller != null:
 		controller.trigger_haptic_pulse("haptic", 0.0, lerpf(0.4, 1.0, strength), lerpf(0.04, 0.12, strength), 0.0)
+
+
+func _skip_space_warp_frame() -> void:
+	if space_warp != null and space_warp.has_method("skip_space_warp_frame"):
+		space_warp.skip_space_warp_frame()
 
 
 # ---- headset ----------------------------------------------------------------------------------------------------------------------
