@@ -105,6 +105,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_lights()
 	_build_props()
+	_build_stains()
 
 
 func _process(delta: float) -> void:
@@ -679,6 +680,17 @@ func _build_props() -> void:
 	add_prop("wooden_crate_02", Vector3(X1 - 0.42, 0.47, -2.7), 4.0, false)
 	add_prop("trashbag", Vector3(X0 + 0.5, 0, Z1 - 0.4), 20.0)
 	add_prop("trashbag", Vector3(X0 + 1.05, 0, Z1 - 0.3), 75.0)
+	# the old bed along the west wall, and a metal rack against the south wall
+	add_prop("old_bed_frame", Vector3(X0 + 0.5, 0, -5.2), 0.0)
+	add_prop("worn_metal_rack", Vector3(1.7, 0, Z1 - 0.35), 180.0)
+	# what is lying on the table (the flat tools are modelled standing up, so they are laid down)
+	var hammer := add_prop("cross_pein_hammer", Vector3(0.05, TABLE_TOP + 0.012, -3.0), 0.0, false)
+	hammer.rotation_degrees = Vector3(-90.0, 25.0, 0.0)
+	var saw := add_prop("rusted_hacksaw", Vector3(0.3, TABLE_TOP + 0.02, -3.9), 0.0, false)
+	saw.rotation_degrees = Vector3(-90.0, -15.0, 0.0)
+	add_prop("medical_box", Vector3(0.1, TABLE_TOP, -2.75), 10.0, false)
+	add_prop("rubber_boots", Vector3(-0.5, 0, -7.35), 20.0, false)
+	add_prop("old_gas_mask", Vector3(X1 - 0.14, 1.8, -1.0), -90.0, false)       # hung on the east wall
 	# the radio on the shelves, facing into the room, shrunk 5% so its antenna clears the board above
 	radio = Radio.new()
 	radio.name = "Radio"
@@ -698,6 +710,74 @@ func _build_props() -> void:
 	knife.position = Vector3(X1 - 0.38, KNIFE_SHELF_TOP + 0.012, -5.55)
 	knife.rotation = Vector3(0.0, 0.2, PI / 2.0)
 	props.add_child(knife)
+
+
+# ---- stains ----------------------------------------------------------------------------------------------------------------------------
+
+# Dried blood so the room looks used: soft-edged blotches made from noise (no texture files), laid a hair above the floor, and spatter on
+# the tiled walls.
+func _stain_texture(seed_value: int, spatter: bool) -> ImageTexture:
+	var size := 192
+	var noise := FastNoiseLite.new()
+	noise.seed = seed_value
+	noise.frequency = 0.045 if not spatter else 0.16
+	noise.fractal_octaves = 4
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var half := size * 0.5
+	for y in size:
+		for x in size:
+			var d := Vector2(x - half, y - half).length() / half
+			var n := noise.get_noise_2d(x, y) * 0.5 + 0.5
+			var a: float
+			if spatter:
+				a = clampf((n - 0.62) * 9.0, 0.0, 1.0) * clampf((1.0 - d) * 2.5, 0.0, 1.0)
+			else:
+				a = clampf((1.0 - d * 1.05 + (n - 0.5) * 1.5) * 3.0, 0.0, 1.0)
+			var shade := 0.5 + 0.5 * n
+			img.set_pixel(x, y, Color(0.22 * shade, 0.012, 0.01, a * 0.85))
+	return ImageTexture.create_from_image(img)
+
+
+func _stain(tex: Texture2D, center: Vector3, size: Vector2, yaw_degrees: float, normal := Vector3.UP) -> void:
+	var mi := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = size
+	mi.mesh = plane
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.roughness = 0.3
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = center
+	if normal == Vector3.UP:
+		mi.rotation_degrees.y = yaw_degrees
+	elif normal == Vector3.LEFT:      # on the east wall, facing into the room
+		mi.rotation_degrees = Vector3(0.0, yaw_degrees, 90.0)
+	else:                              # on the west wall, facing east
+		mi.rotation_degrees = Vector3(0.0, yaw_degrees, -90.0)
+	props.add_child(mi)
+
+
+func _build_stains() -> void:
+	var pool_a := _stain_texture(11, false)
+	var pool_b := _stain_texture(29, false)
+	var spatter := _stain_texture(53, true)
+	# a big dried pool beside the table, and a smaller one by the chair
+	_stain(pool_a, Vector3(0.55, 0.008, -3.2), Vector2(1.9, 1.9), 20.0)
+	_stain(pool_b, Vector3(-2.15, 0.008, -3.1), Vector2(1.3, 1.3), 70.0)
+	# a drag trail from the table to the door
+	var from := Vector2(0.1, -4.5)
+	var to := Vector2(-1.5, -7.2)
+	for i in 7:
+		var t := float(i) / 6.0
+		var at := from.lerp(to, t)
+		var w := 0.9 - 0.45 * t
+		_stain(pool_a if i % 2 == 0 else pool_b, Vector3(at.x, 0.009, at.y), Vector2(w, w * 1.3), 25.0 + 30.0 * float(i))
+	# spatter on the tiles: behind the bed (west wall) and above the crates (east wall)
+	_stain(spatter, Vector3(X0 + 0.012, 1.0, -5.0), Vector2(1.5, 1.2), 0.0, Vector3.RIGHT)
+	_stain(spatter, Vector3(X1 - 0.012, 1.15, -2.7), Vector2(1.3, 1.1), 0.0, Vector3.LEFT)
 
 
 # Puts a Poly Haven model into the room. `pos` is where its base (or, for the lamp, its top) goes.

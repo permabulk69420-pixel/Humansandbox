@@ -1,0 +1,159 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v5.1.20",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "rusted_hacksaw"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "rusted_hacksaw",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicRoughnessTexture": {
+          "index": 2
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube.002",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/jpeg",
+      "name": "rusted_hacksaw_nor_gl",
+      "uri": "textures/rusted_hacksaw_nor_gl_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "rusted_hacksaw_diff",
+      "uri": "textures/rusted_hacksaw_diff_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "rusted_hacksaw_metal-rusted_hacksaw_rough",
+      "uri": "textures/rusted_hacksaw_arm_1k.jpg"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 5367,
+      "max": [
+        0.2532377243041992,
+        0.06691505014896393,
+        0.016412463039159775
+      ],
+      "min": [
+        -0.243133544921875,
+        -0.0424669049680233,
+        -0.016413450241088867
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 5367,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 5367,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 19638,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 64404,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 64404,
+      "byteOffset": 64404,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 42936,
+      "byteOffset": 128808,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 39276,
+      "byteOffset": 171744,
+      "target": 34963
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 211020,
+      "uri": "rusted_hacksaw.bin"
+    }
+  ]
+}
