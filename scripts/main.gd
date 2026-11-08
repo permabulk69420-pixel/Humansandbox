@@ -104,6 +104,8 @@ func _ready() -> void:
 	thud.stream = _make_thud()
 	thud.unit_size = 4.0
 	woman.add_child(thud)
+	# she is strapped to the table, on her back (the one in the middle of the room), head towards the player
+	woman.strap_down(Vector3(KillRoom.TABLE_POS.x, KillRoom.TABLE_TOP, KillRoom.TABLE_POS.z), PI)
 	print("Humansandbox ready%s" % (" · headset" if vr else ""))
 
 
@@ -155,6 +157,8 @@ func _unhandled_input(event: InputEvent) -> void:
 # Stands her in front of where the player is looking, on the floor, facing them.
 func place_woman() -> void:
 	woman.visible = true
+	if woman.strapped:
+		return                                       # she is strapped to the table: she stays where she is
 	woman.global_transform = placement(camera.global_position, -camera.global_basis.z, rig.global_position.y, WOMAN_DISTANCE)
 	woman.home = woman.global_position
 	woman.move_target = null

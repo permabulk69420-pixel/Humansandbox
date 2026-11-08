@@ -110,6 +110,19 @@ var turning_to_face := false
 var pause_timer := 3.0             # seconds before she sets off somewhere
 var rest_local_origin: Array[Vector3] = []
 
+# Strapped to a table, on her back, struggling (strap_down()).
+const LIE_HIPS_HEIGHT := 0.115          # how high her hips sit above the table
+const STRUGGLE_BASE := 0.18             # she is never quite still
+const STRUGGLE_GAIN := 1.0              # how hard she pulls (times the degrees in _add_struggle)
+const STRUGGLE_GAIN_HEAD := 1.0
+const STRUGGLE_MAX := 1.3               # and the most energy a hit can add on top
+const LEGS_TOGETHER := deg_to_rad(-5.6)  # how far each leg is turned in from the rest pose's slightly open stance
+var strapped := false
+var struggle := 0.0                     # extra struggling after being hit, easing off
+var _wriggle_scale := 1.0
+var _straps: Node3D
+var body: RagdollBody
+
 
 func _ready() -> void:
 	rng.seed = 7
@@ -152,12 +165,254 @@ func _process(delta: float) -> void:
 	update(delta)
 
 
+# ---- strapped to a table ------------------------------------------------------------------------------------------------------------------
+
+# Lays her on her back on a table, face up, head towards `yaw`'s back, and straps her down: across the waist, both forearms, the thighs and
+# the shins, and over her mouth. `table_top` is the middle of the table's top surface; `yaw` is the way her feet point (her head goes the other way).
+func strap_down(table_top: Vector3, yaw: float) -> void:
+	strapped = true
+	fall_state = Fall.LYING
+	wander = false
+	move_target = null
+	rotation.y = yaw
+	# her hips sit a little towards her head from the middle, so that her whole body is centred on the table
+	global_position = table_top + Vector3(sin(yaw), 0.0, cos(yaw)) * -0.175
+	global_position.y = table_top.y
+	home = global_position
+	_wriggle_scale = 0.0
+	update(0.0)
+	_wriggle_scale = 1.0
+	_build_straps()
+
+
+# The body turned onto its back about the hips, and the hips lowered onto the table.
+func _lie_on_back(offsets: Array[Quaternion], hips: Vector3) -> Vector3:
+	# the idle clip's weight-shifted stance would leave her lopsided: keep only its relaxed arms, and lie the rest of her straight, legs together
+	for part in ["Hips", "Spine", "Chest", "UpperChest", "Neck", "Head", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "LeftToes", "RightUpperLeg", "RightLowerLeg", "RightFoot", "RightToes"]:
+		offsets[bone[part]] = Quaternion.IDENTITY
+	# arms straight, angled a little away from her body, resting on the table (the rest pose tips them forward, which would lift them off it)
+	for side in ["Left", "Right"]:
+		offsets[bone[side + "Shoulder"]] = Quaternion.IDENTITY
+		offsets[bone[side + "UpperArm"]] = Quaternion(Vector3.RIGHT, deg_to_rad(17.0))
+		offsets[bone[side + "LowerArm"]] = Quaternion(Vector3.RIGHT, deg_to_rad(30.5))
+		offsets[bone[side + "Hand"]] = Quaternion.IDENTITY
+	offsets[bone["LeftUpperLeg"]] = Quaternion(Vector3.BACK, LEGS_TOGETHER) * Quaternion(Vector3.RIGHT, deg_to_rad(5.0))
+	offsets[bone["RightUpperLeg"]] = Quaternion(Vector3.BACK, -LEGS_TOGETHER) * Quaternion(Vector3.RIGHT, deg_to_rad(5.0))
+	var h: int = bone["Hips"]
+	offsets[h] = Quaternion(Vector3.RIGHT, -PI * 0.5)
+	return Vector3(0.0, LIE_HIPS_HEIGHT - rest_origin[h].y, 0.0)
+
+
+# Straining against the straps in bursts: arms and legs pull, the hips twist, the back arches and the head turns from side to side.
+func _add_struggle(offsets: Array[Quaternion]) -> void:
+	var burst := 0.5 + 0.5 * sin(time * 0.85 + 1.6 * sin(time * 0.31))
+	var energy := minf(STRUGGLE_BASE + (1.0 - STRUGGLE_BASE) * smoothstep(0.3, 0.75, burst) + struggle, STRUGGLE_MAX) * _wriggle_scale
+	# bone, axis, degrees, rate, phase. Strapped limbs barely move (the straps hold them); the head, hands, feet and hips are what is free
+	var moves := [
+		["Hips", Vector3.UP, 4.0, 4.1, 0.0], ["Hips", Vector3.RIGHT, 1.5, 5.3, 1.1],
+		["Spine", Vector3.RIGHT, 2.0, 4.6, 0.4], ["Spine", Vector3.UP, 3.0, 3.7, 2.0],
+		["Chest", Vector3.UP, 3.0, 5.9, 0.7], ["Chest", Vector3.BACK, 2.0, 4.3, 1.9],
+		["Head", Vector3.UP, 18.0, 3.1, 0.2], ["Head", Vector3.RIGHT, 8.0, 4.4, 1.3], ["Head", Vector3.BACK, 7.0, 2.7, 0.9],
+		["LeftUpperArm", Vector3.BACK, 3.0, 6.2, 0.3], ["LeftUpperArm", Vector3.RIGHT, 2.0, 5.1, 2.2], ["LeftLowerArm", Vector3.BACK, 2.0, 7.3, 1.0],
+		["RightUpperArm", Vector3.BACK, 3.0, 5.7, 2.6], ["RightUpperArm", Vector3.RIGHT, 2.0, 6.6, 0.5], ["RightLowerArm", Vector3.BACK, 2.0, 6.9, 3.1],
+		["LeftHand", Vector3.RIGHT, 16.0, 8.1, 0.0], ["LeftHand", Vector3.BACK, 10.0, 7.2, 1.2], ["RightHand", Vector3.RIGHT, 16.0, 7.7, 1.7], ["RightHand", Vector3.BACK, 10.0, 8.4, 2.9],
+		["LeftUpperLeg", Vector3.RIGHT, 1.5, 5.7, 0.8], ["LeftUpperLeg", Vector3.BACK, 2.5, 4.9, 2.4], ["LeftLowerLeg", Vector3.RIGHT, 1.5, 6.6, 1.5],
+		["RightUpperLeg", Vector3.RIGHT, 1.5, 5.2, 2.9], ["RightUpperLeg", Vector3.BACK, 2.5, 5.6, 0.1], ["RightLowerLeg", Vector3.RIGHT, 1.5, 7.1, 3.4],
+		["LeftFoot", Vector3.RIGHT, 18.0, 7.7, 0.6], ["LeftFoot", Vector3.BACK, 8.0, 6.3, 2.2], ["RightFoot", Vector3.RIGHT, 18.0, 8.3, 2.1], ["RightFoot", Vector3.BACK, 8.0, 7.0, 0.4],
+	]
+	for m in moves:
+		var wave: float = sin(time * m[3] + m[4]) + 0.35 * sin(time * m[3] * 2.3 + m[4] * 1.7)
+		var gain := STRUGGLE_GAIN_HEAD if m[0] == "Head" else STRUGGLE_GAIN
+		_stack(offsets, m[0], Quaternion(m[1], deg_to_rad(m[2]) * gain * energy * wave))
+
+
+# Leather straps across her, fixed to the table (with solid colliders so she cannot pull through them), and one over her mouth that stays
+# on her head. Then the physical body that keeps her in them.
+func _build_straps() -> void:
+	var leather := StandardMaterial3D.new()
+	leather.albedo_texture = load(KillRoom.TEX % ["brown_leather", "brown_leather", "diff"])
+	leather.albedo_color = Color(1.5, 1.2, 0.95)
+	leather.roughness = 0.7
+	leather.cull_mode = BaseMaterial3D.CULL_DISABLED
+	leather.uv1_scale = Vector3(1.0, 1.0, 1.0)
+	var metal := StandardMaterial3D.new()
+	metal.albedo_color = Color(0.55, 0.55, 0.57)
+	metal.metallic = 0.9
+	metal.roughness = 0.35
+	_straps = Node3D.new()
+	_straps.name = "Straps"
+	get_parent().add_child(_straps)
+	var world := skeleton.global_transform
+	var at := func(n: String) -> Vector3: return world * skeleton.get_bone_global_pose(bone[n]).origin
+	var table_y := global_position.y
+	var table_x := home.x
+	# (centre, how high her body stands there, half width of the body, strap width, how far the ends run each side past the body)
+	var bands := [
+		[at.call("Spine"), 0.255, 0.20, 0.075, 0.215],
+		[(at.call("LeftLowerArm") + at.call("LeftHand")) * 0.5, 0.113, 0.042, 0.05, 0.06],
+		[(at.call("RightLowerArm") + at.call("RightHand")) * 0.5, 0.113, 0.042, 0.05, 0.06],
+		[(at.call("LeftUpperLeg") + at.call("LeftLowerLeg") + at.call("RightUpperLeg") + at.call("RightLowerLeg")) * 0.25, 0.229, 0.175, 0.075, 0.24],
+		[(at.call("LeftLowerLeg") + at.call("LeftFoot") + at.call("RightLowerLeg") + at.call("RightFoot")) * 0.25, 0.177, 0.17, 0.065, 0.245],
+	]
+	for i in bands.size():
+		var b: Array = bands[i]
+		var centre: Vector3 = b[0]
+		var x := table_x if i == 0 or i >= 3 else centre.x          # along her middle, except the arms, which lie out to the sides
+		_add_strap(leather, metal, Vector3(x, table_y, centre.z), b[1], b[2], b[3], b[4])
+	# over the mouth: a band round the head at the level of her mouth, riding on the head bone
+	var attach := BoneAttachment3D.new()
+	attach.name = "MouthStrap"
+	attach.bone_name = "Head"
+	skeleton.add_child(attach)
+	var ring := MeshInstance3D.new()
+	ring.mesh = _ring_mesh(0.072, 0.088, 0.04)
+	ring.material_override = leather
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var head_rest := skeleton.get_bone_global_rest(bone["Head"])
+	ring.transform = head_rest.affine_inverse() * Transform3D(Basis.IDENTITY, HEAD_CENTER_REST + MOUTH_RING_OFFSET)
+	attach.add_child(ring)
+	_start_body()
+
+
+const MOUTH_RING_OFFSET := Vector3(0.0, -0.078, 0.007)      # from the middle of her skull to the middle of her mouth (measured on the mesh)
+
+
+# One strap over her: it comes up from the table on one side, follows the curve of her body over the top and goes back down the other
+# side, with a buckle on one end. Solid colliders (invisible) hold the same shape, so her body cannot pull up through it.
+func _add_strap(leather: Material, metal: Material, at_table: Vector3, height: float, half: float, width: float, run: float) -> void:
+	var points: Array[Vector2] = []
+	points.append(Vector2(-(half + run), 0.004))
+	points.append(Vector2(-(half + 0.02), 0.004))
+	var steps := 18
+	for k in steps + 1:
+		var theta := PI - PI * float(k) / steps
+		points.append(Vector2((half + 0.004) * cos(theta), height * pow(sin(theta), 0.55) + 0.004))
+	points.append(Vector2(half + 0.02, 0.004))
+	points.append(Vector2(half + run, 0.004))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var along := 0.0
+	for k in points.size() - 1:
+		var p0 := points[k]
+		var p1 := points[k + 1]
+		var tangent := (p1 - p0).normalized()
+		var normal := Vector3(-tangent.y, tangent.x, 0.0)
+		var u0 := along / 0.2
+		along += p0.distance_to(p1)
+		var u1 := along / 0.2
+		var corners := [
+			[Vector3(p0.x, p0.y, -width * 0.5), Vector2(u0, 0.0)], [Vector3(p1.x, p1.y, -width * 0.5), Vector2(u1, 0.0)],
+			[Vector3(p1.x, p1.y, width * 0.5), Vector2(u1, 1.0)], [Vector3(p0.x, p0.y, width * 0.5), Vector2(u0, 1.0)],
+		]
+		for i in [0, 1, 2, 0, 2, 3]:
+			st.set_normal(normal)
+			st.set_uv(corners[i][1])
+			st.add_vertex(corners[i][0])
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = leather
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = at_table
+	_straps.add_child(mi)
+	# the buckle: a small steel plate on the right-hand end
+	var buckle := MeshInstance3D.new()
+	var plate := BoxMesh.new()
+	plate.size = Vector3(0.04, 0.012, width + 0.012)
+	buckle.mesh = plate
+	buckle.material_override = metal
+	buckle.position = at_table + Vector3(half + run * 0.55, 0.01, 0.0)
+	_straps.add_child(buckle)
+	# the colliders: across the top, and down each side
+	var body := StaticBody3D.new()
+	body.name = "StrapSolid"
+	body.position = at_table
+	var top := CollisionShape3D.new()
+	var top_box := BoxShape3D.new()
+	top_box.size = Vector3(half * 2.0 + 0.02, 0.008, width)
+	top.shape = top_box
+	top.position = Vector3(0.0, height + 0.004, 0.0)
+	body.add_child(top)
+	for side in [-1.0, 1.0]:
+		var wall := CollisionShape3D.new()
+		var wall_box := BoxShape3D.new()
+		wall_box.size = Vector3(0.008, height, width)
+		wall.shape = wall_box
+		wall.position = Vector3(side * (half + 0.012), height * 0.5, 0.0)
+		body.add_child(wall)
+	_straps.add_child(body)
+
+
+# An elliptical band standing on its edge, one sheet drawn from both sides: half widths `rx` (across) and `rz` (front to back), `height` tall.
+static func _ring_mesh(rx: float, rz: float, height: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var sides := 40
+	for k in sides:
+		var a0 := TAU * k / sides
+		var a1 := TAU * (k + 1) / sides
+		var p0 := Vector3(cos(a0) * rx, 0.0, sin(a0) * rz)
+		var p1 := Vector3(cos(a1) * rx, 0.0, sin(a1) * rz)
+		var n0 := -Vector3(cos(a0) / rx, 0.0, sin(a0) / rz).normalized()
+		var n1 := -Vector3(cos(a1) / rx, 0.0, sin(a1) / rz).normalized()
+		var up := Vector3(0.0, height * 0.5, 0.0)
+		var quad := [p0 + up, p1 + up, p1 - up, p0 - up]
+		var normals := [n0, n1, n1, n0]
+		var uvs := [Vector2(float(k) / sides * 3.0, 0.0), Vector2(float(k + 1) / sides * 3.0, 0.0), Vector2(float(k + 1) / sides * 3.0, 1.0), Vector2(float(k) / sides * 3.0, 1.0)]
+		for i in [0, 1, 2, 0, 2, 3]:
+			st.set_normal(normals[i])
+			st.set_uv(uvs[i])
+			st.add_vertex(quad[i])
+	return st.commit()
+
+
+# ---- the physical body ---------------------------------------------------------------------------------------------------------------------
+
+func _start_body() -> void:
+	var rest := func(n: String) -> Vector3: return rest_origin[bone[n]]
+	var specs := []
+	var add := func(from_bone: String, end_point: Vector3, radius: float, lift := 0.0) -> void:
+		var i: int = bone[from_bone]
+		var inverse := skeleton.get_bone_global_rest(i).affine_inverse()
+		specs.append([i, inverse * end_point, radius, inverse.basis * Vector3(0.0, 0.0, lift)])
+	# radii and lifts are fitted to her measured body, so each capsule sits just under the strap that crosses it
+	add.call("Hips", rest.call("Spine"), 0.10)
+	add.call("Spine", rest.call("Chest"), 0.115, 0.05)
+	add.call("Chest", rest.call("Neck"), 0.11, 0.05)
+	add.call("Head", rest.call("Head") + Vector3(0.0, 0.17, 0.02), 0.085)
+	for side in ["Left", "Right"]:
+		add.call(side + "UpperArm", rest.call(side + "LowerArm"), 0.04)
+		add.call(side + "LowerArm", rest.call(side + "Hand"), 0.024)
+		var forearm: Vector3 = (rest.call(side + "Hand") - rest.call(side + "LowerArm")).normalized()
+		add.call(side + "Hand", rest.call(side + "Hand") + forearm * 0.09, 0.03)
+		add.call(side + "UpperLeg", rest.call(side + "LowerLeg"), 0.085, -0.01)
+		add.call(side + "LowerLeg", rest.call(side + "Foot"), 0.058, -0.01)
+		add.call(side + "Foot", rest.call(side + "Toes"), 0.04)
+	body = RagdollBody.new()
+	body.name = "StrappedBody"
+	get_parent().add_child(body)
+	body.setup(skeleton, specs)
+	body.floor_y = global_position.y + 0.002
+	body.read_targets()
+	body.snap()
+
+
 # ---- what the rest of the game asks of her -----------------------------------------------------------------------------------------
 
 # A fist landed at `point` moving at `velocity` (both in world space).
 func hit(point: Vector3, velocity: Vector3, strength: float = 1.0) -> void:
 	hits += 1
 	hit_taken.emit(point, strength)
+	if strapped:
+		var in_model := skeleton.global_transform.affine_inverse()
+		var arm: Vector3 = in_model * point - in_model * _head_pivot_world()
+		var spin := arm.cross(in_model.basis * velocity) * SPIN_GAIN * NECK_FREEDOM
+		if spin.length() > MAX_SPIN:
+			spin = spin.normalized() * MAX_SPIN
+		hit_velocity += spin                         # her head snaps round, and she strains harder for a moment
+		struggle = minf(2.0, struggle + 0.7 + strength)
+		if body != null:
+			body.push(point, velocity, strength)
+		return
 	if fall_state != Fall.STANDING:
 		return                                       # already down: it counts, but there is nothing left to knock
 	var to_model := skeleton.global_transform.affine_inverse()
@@ -236,13 +491,24 @@ func update(dt: float) -> void:
 	offsets.resize(skeleton.get_bone_count())
 	offsets.fill(Quaternion.IDENTITY)
 	var hips_move := _add_clip(offsets)
+	if strapped:
+		struggle = maxf(0.0, struggle - dt * 0.9)
+		hips_move = _lie_on_back(offsets, hips_move)
+		_add_struggle(offsets)
 	_add_look(offsets, dt)
 	_add_reaction(offsets)
 
 	for i in offsets.size():
+		if body != null:
+			# the physical body poses bones by their global pose, which also moves their local position: start each frame from the rest ones
+			skeleton.set_bone_pose_position(i, rest_local_origin[i])
+			skeleton.set_bone_pose_scale(i, Vector3.ONE)
 		_pose_bone(i, offsets[i])
 	skeleton.set_bone_pose_position(bone["Hips"], rest_local_origin[bone["Hips"]] + hips_move)
 	_aim_eyes(offsets, dt)
+	if body != null:
+		body.read_targets()
+		body.pose_skeleton()
 
 
 func _pose_bone(i: int, q: Quaternion) -> void:
@@ -384,6 +650,13 @@ func _advance(name_of_clip: String, t: float, by: float) -> float:
 
 func _update_clip(dt: float) -> void:
 	if clips.is_empty():
+		return
+	if strapped:
+		if clip_name != "Idle_Loop":
+			clip_name = "Idle_Loop"
+			clip_time = 0.0
+			fade = 1.0
+		clip_time = _advance(clip_name, clip_time, dt)
 		return
 	if fall_state != Fall.STANDING and clips.has(FALL_CLIP):
 		_update_fall_clip(dt)

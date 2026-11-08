@@ -327,10 +327,11 @@ func test_main_scene() -> void:
 	await process_frame
 	check(not main.vr, "runs on a flat screen without a headset")
 	check(main.woman != null and main.woman.target == main.camera, "she is watching the camera")
-	check(main.woman.global_position.z < -0.5, "she stands in front of the player")
-	for i in 72:   # a second for her gaze to settle on the player
+	check(main.woman.strapped, "she is strapped to the table")
+	check(main.woman.global_position.z < -0.5, "in front of the player")
+	for i in 72:
 		main.woman.update(1.0 / 72.0)
-	check(angle_between(main.woman.head_forward(), main.camera.global_position - main.woman.head_center()) < 8.0, "and faces the player")
+	check(main.woman.head_center().y > 0.95 and main.woman.head_center().y < 1.4, "on her back on the table (head %.2f m up)" % main.woman.head_center().y)
 	var before: int = main.woman.hits
 	main.throw_flat_punch()
 	check(main.woman.hits == before + 1, "a flat-screen punch lands")
