@@ -122,6 +122,7 @@ var struggle := 0.0                     # extra struggling after being hit, easi
 var _wriggle_scale := 1.0
 var _straps: Node3D
 var body: RagdollBody
+var cry: AudioStreamPlayer3D
 
 
 func _ready() -> void:
@@ -183,6 +184,7 @@ func strap_down(table_top: Vector3, yaw: float) -> void:
 	update(0.0)
 	_wriggle_scale = 1.0
 	_build_straps()
+	_start_crying()
 
 
 # The body turned onto its back about the hips, and the hips lowered onto the table.
@@ -229,12 +231,14 @@ func _add_struggle(offsets: Array[Quaternion]) -> void:
 # Leather straps across her, fixed to the table (with solid colliders so she cannot pull through them), and one over her mouth that stays
 # on her head. Then the physical body that keeps her in them.
 func _build_straps() -> void:
-	var leather := StandardMaterial3D.new()
+	var leather := ORMMaterial3D.new()
 	leather.albedo_texture = load(KillRoom.TEX % ["brown_leather", "brown_leather", "diff"])
-	leather.albedo_color = Color(1.5, 1.2, 0.95)
-	leather.roughness = 0.7
+	leather.albedo_color = Color(1.35, 1.1, 0.9)
+	leather.normal_enabled = true
+	leather.normal_texture = load(KillRoom.TEX % ["brown_leather", "brown_leather", "nor"])
+	leather.orm_texture = load(KillRoom.TEX % ["brown_leather", "brown_leather", "arm"])
+	leather.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	leather.cull_mode = BaseMaterial3D.CULL_DISABLED
-	leather.uv1_scale = Vector3(1.0, 1.0, 1.0)
 	var metal := StandardMaterial3D.new()
 	metal.albedo_color = Color(0.55, 0.55, 0.57)
 	metal.metallic = 0.9
@@ -252,10 +256,10 @@ func _build_straps() -> void:
 	var right_forearm: Vector3 = at.call("RightHand") - at.call("RightLowerArm")
 	var bands := [
 		[at.call("Spine"), 0.265, 0.215, 0.08, 0.205, 0.0],
-		[(at.call("LeftLowerArm") + at.call("LeftHand")) * 0.5, 0.128, 0.058, 0.06, 0.09, atan2(left_forearm.x, left_forearm.z)],
-		[(at.call("RightLowerArm") + at.call("RightHand")) * 0.5, 0.128, 0.058, 0.06, 0.09, atan2(right_forearm.x, right_forearm.z)],
-		[(at.call("LeftUpperLeg") + at.call("LeftLowerLeg") + at.call("RightUpperLeg") + at.call("RightLowerLeg")) * 0.25, 0.246, 0.205, 0.09, 0.21, 0.0],
-		[(at.call("LeftLowerLeg") + at.call("LeftFoot") + at.call("RightLowerLeg") + at.call("RightFoot")) * 0.25, 0.188, 0.19, 0.07, 0.225, 0.0],
+		[(at.call("LeftLowerArm") + at.call("LeftHand")) * 0.5, 0.152, 0.072, 0.06, 0.085, atan2(left_forearm.x, left_forearm.z)],
+		[(at.call("RightLowerArm") + at.call("RightHand")) * 0.5, 0.152, 0.072, 0.06, 0.085, atan2(right_forearm.x, right_forearm.z)],
+		[(at.call("LeftUpperLeg") + at.call("LeftLowerLeg") + at.call("RightUpperLeg") + at.call("RightLowerLeg")) * 0.25, 0.246, 0.245, 0.09, 0.175, 0.0],
+		[(at.call("LeftLowerLeg") + at.call("LeftFoot") + at.call("RightLowerLeg") + at.call("RightFoot")) * 0.25, 0.188, 0.21, 0.07, 0.205, 0.0],
 	]
 	for i in bands.size():
 		var b: Array = bands[i]
@@ -277,6 +281,8 @@ func _build_straps() -> void:
 	_start_body()
 
 
+const CRY := "res://assets/audio/woman_cry.mp3"
+const STRAP_GRAIN := 0.3                # metres of leather the grain texture covers
 const MOUTH_RING_OFFSET := Vector3(0.0, -0.078, 0.007)      # from the middle of her skull to the middle of her mouth (measured on the mesh)
 
 
@@ -304,17 +310,18 @@ func _add_strap(leather: Material, metal: Material, at_table: Vector3, height: f
 		var p1 := points[k + 1]
 		var tangent := (p1 - p0).normalized()
 		var normal := Vector3(-tangent.y, tangent.x, 0.0)
-		var u0 := along / 0.2
+		var u0 := along / STRAP_GRAIN
 		along += p0.distance_to(p1)
-		var u1 := along / 0.2
+		var u1 := along / STRAP_GRAIN
 		var corners := [
 			[Vector3(p0.x, p0.y, -width * 0.5), Vector2(u0, 0.0)], [Vector3(p1.x, p1.y, -width * 0.5), Vector2(u1, 0.0)],
-			[Vector3(p1.x, p1.y, width * 0.5), Vector2(u1, 1.0)], [Vector3(p0.x, p0.y, width * 0.5), Vector2(u0, 1.0)],
+			[Vector3(p1.x, p1.y, width * 0.5), Vector2(u1, width / STRAP_GRAIN)], [Vector3(p0.x, p0.y, width * 0.5), Vector2(u0, width / STRAP_GRAIN)],
 		]
 		for i in [0, 1, 2, 0, 2, 3]:
 			st.set_normal(normal)
 			st.set_uv(corners[i][1])
 			st.add_vertex(corners[i][0])
+	st.generate_tangents()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	mi.material_override = leather
@@ -362,12 +369,32 @@ static func _ring_mesh(rx: float, rz: float, height: float) -> ArrayMesh:
 		var up := Vector3(0.0, height * 0.5, 0.0)
 		var quad := [p0 + up, p1 + up, p1 - up, p0 - up]
 		var normals := [n0, n1, n1, n0]
-		var uvs := [Vector2(float(k) / sides * 3.0, 0.0), Vector2(float(k + 1) / sides * 3.0, 0.0), Vector2(float(k + 1) / sides * 3.0, 1.0), Vector2(float(k) / sides * 3.0, 1.0)]
+		var circumference := TAU * (rx + rz) * 0.5
+		var uvs := [Vector2(float(k) / sides * circumference / STRAP_GRAIN, 0.0), Vector2(float(k + 1) / sides * circumference / STRAP_GRAIN, 0.0), Vector2(float(k + 1) / sides * circumference / STRAP_GRAIN, height / STRAP_GRAIN), Vector2(float(k) / sides * circumference / STRAP_GRAIN, height / STRAP_GRAIN)]
 		for i in [0, 1, 2, 0, 2, 3]:
 			st.set_normal(normals[i])
 			st.set_uv(uvs[i])
 			st.add_vertex(quad[i])
+	st.generate_tangents()
 	return st.commit()
+
+
+# She cries, on a loop, from where her head is.
+func _start_crying() -> void:
+	var stream := load(CRY) as AudioStreamMP3
+	if stream == null:
+		return
+	stream.loop = true
+	cry = AudioStreamPlayer3D.new()
+	cry.name = "Crying"
+	cry.stream = stream
+	cry.unit_size = 10.0
+	cry.max_distance = 40.0
+	cry.volume_db = -3.0
+	cry.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+	add_child(cry)
+	cry.global_position = head_center()
+	cry.play()
 
 
 # ---- the physical body ---------------------------------------------------------------------------------------------------------------------
@@ -386,9 +413,9 @@ func _start_body() -> void:
 	add.call("Head", rest.call("Head") + Vector3(0.0, 0.17, 0.02), 0.085)
 	for side in ["Left", "Right"]:
 		add.call(side + "UpperArm", rest.call(side + "LowerArm"), 0.04)
-		add.call(side + "LowerArm", rest.call(side + "Hand"), 0.024)
+		add.call(side + "LowerArm", rest.call(side + "Hand"), 0.031)
 		var forearm: Vector3 = (rest.call(side + "Hand") - rest.call(side + "LowerArm")).normalized()
-		add.call(side + "Hand", rest.call(side + "Hand") + forearm * 0.09, 0.03)
+		add.call(side + "Hand", rest.call(side + "Hand") + forearm * 0.09, 0.034)
 		add.call(side + "UpperLeg", rest.call(side + "LowerLeg"), 0.085, -0.01)
 		add.call(side + "LowerLeg", rest.call(side + "Foot"), 0.058, -0.01)
 		add.call(side + "Foot", rest.call(side + "Toes"), 0.04)
