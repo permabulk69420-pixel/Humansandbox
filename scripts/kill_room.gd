@@ -29,6 +29,8 @@ const MODEL := "res://assets/room/models/%s/%s.gltf"
 # ---- lights ----------------------------------------------------------------------------------------------------------------------------
 const LAMP_POS := Vector3(0.2, H, -2.6)
 const TABLE_POS := Vector3(0.2, 0.0, -3.5)
+const TABLE_TOP := 0.957             # the table's top surface, for collision and for things set down on it
+const SHELF_BOARD := 1.145           # the board of the steel shelves the radio sits on (the boards are at 0.135, 0.64, 1.145, 1.65 m)
 const LAMP_SCALE := 0.8             # the Poly Haven lamp comes with a 1.3 m chain: shortened so the shade hangs above head height
 const LAMP_ENERGY := 3.2
 const TUBE_POS := Vector3(-1.8, H, -6.1)
@@ -56,6 +58,8 @@ class Batch:
 
 var props: Node3D
 var collision_root: Node3D
+var radio: Radio
+var torch: Blowtorch
 var _materials := {}
 var _batches := {}
 var _noise := FastNoiseLite.new()
@@ -473,7 +477,7 @@ func _build_table() -> void:
 	# leather straps across the table
 	for sz in [-0.62, -0.05, 0.55]:
 		_box(leather, c + Vector3(0, h + 0.043, sz), Vector3(wid + 0.06, 0.012, 0.07), _tile("leather"))
-	_static_box("Table", c + Vector3(0, h * 0.5 + 0.02, 0), Vector3(wid, h + 0.08, len))
+	_static_box("Table", c + Vector3(0, TABLE_TOP * 0.5, 0), Vector3(wid, TABLE_TOP, len))     # solid up to the top surface, so things sit on it
 
 
 # An overhead rail with hooks hanging from it on chains.
@@ -637,6 +641,19 @@ func _build_props() -> void:
 	add_prop("metal_stool_01", Vector3(-0.95, 0, -4.1), 15.0)
 	add_prop("wooden_bucket_01", Vector3(1.6, 0, -3.9), 0.0)
 	add_prop("water_manhole_cover", Vector3(1.2, 0, -2.7), 0.0, false)
+	# the radio on the shelves, facing into the room, shrunk 5% so its antenna clears the board above
+	radio = Radio.new()
+	radio.name = "Radio"
+	radio.model_scale = 0.95
+	radio.position = Vector3(X1 - 0.38, SHELF_BOARD + 0.002, -5.25)
+	radio.rotation_degrees.y = -90.0
+	props.add_child(radio)
+	# the blowtorch standing on the table, at the end nearest the door you come in by
+	torch = Blowtorch.new()
+	torch.name = "Blowtorch"
+	torch.position = Vector3(TABLE_POS.x + 0.2, TABLE_TOP + 0.006, TABLE_POS.z + 0.8)
+	torch.rotation_degrees.y = -35.0
+	props.add_child(torch)
 
 
 # Puts a Poly Haven model into the room. `pos` is where its base (or, for the lamp, its top) goes.

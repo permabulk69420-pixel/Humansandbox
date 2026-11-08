@@ -1,0 +1,69 @@
+{
+  "left": {
+    "clearance_mm": {
+      "index_pressed": -0.79,
+      "index_released": 11.37,
+      "middle_pressed": -0.79,
+      "middle_released": -0.79,
+      "palm_pressed": 4.86,
+      "palm_released": 4.83,
+      "pinky_pressed": -0.79,
+      "pinky_released": -0.79,
+      "ring_pressed": -0.79,
+      "ring_released": -0.79,
+      "thumb_pressed": -0.79,
+      "thumb_released": -0.79
+    },
+    "fingers": {
+      "index_pressed": 0.539,
+      "index_released": 0.269,
+      "middle": 0.582,
+      "pinky": 0.596,
+      "ring": 0.533,
+      "thumb": 0.276
+    },
+    "offset": [
+      0.0324,
+      0.0,
+      -0.0006
+    ],
+    "palm_clearance_mm": 2.19,
+    "pitch": 0.0,
+    "roll": -10.0,
+    "yaw": 9.0
+  },
+  "right": {
+    "clearance_mm": {
+      "index_pressed": -0.79,
+      "index_released": 11.63,
+      "middle_pressed": -0.78,
+      "middle_released": -0.78,
+      "palm_pressed": 4.98,
+      "palm_released": 4.86,
+      "pinky_pressed": -0.78,
+      "pinky_released": -0.78,
+      "ring_pressed": -0.79,
+      "ring_released": -0.79,
+      "thumb_pressed": -0.78,
+      "thumb_released": -0.78
+    },
+    "fingers": {
+      "index_pressed": 0.583,
+      "index_released": 0.292,
+      "middle": 0.604,
+      "pinky": 0.61,
+      "ring": 0.588,
+      "thumb": 0.229
+    },
+    "offset": [
+      -0.033,
+      0.004,
+      0.0
+    ],
+    "palm_clearance_mm": 2.72,
+    "pitch": 0.0,
+    "roll": 10.0,
+    "yaw": -15.0
+  },
+  "scale": 0.6
+}

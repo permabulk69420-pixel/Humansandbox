@@ -28,6 +28,7 @@ var right_controller: XRController3D
 var hands: VrHands
 var woman: Woman
 var room: KillRoom
+var interactions: HandInteractions
 var body: CharacterBody3D
 var detector := PunchDetector.new()
 var thud: AudioStreamPlayer3D
@@ -75,6 +76,7 @@ func _ready() -> void:
 		hands = VrHands.new({"left": left_controller, "right": right_controller})
 		KillRoom.apply_anisotropic(left_controller)    # the hand models hang off the controllers
 		KillRoom.apply_anisotropic(right_controller)
+		interactions = HandInteractions.new(hands, room.radio, room.torch)
 		detector.add_hand("left", left_controller)
 		detector.add_hand("right", right_controller)
 	detector.punched.connect(_on_punched)
@@ -126,6 +128,8 @@ func _process(delta: float) -> void:
 			float(Input.is_key_pressed(KEY_W)) - float(Input.is_key_pressed(KEY_S)))
 		turn = float(Input.is_key_pressed(KEY_E) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_Q) or Input.is_key_pressed(KEY_LEFT))
 	locomote(move, turn, dt)
+	if interactions != null:
+		interactions.update(dt)
 	if hands != null:
 		hands.update(dt)
 	detector.update(dt, woman)

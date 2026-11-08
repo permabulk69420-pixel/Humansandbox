@@ -6,6 +6,7 @@ extends RefCounted
 const GRIP_ROTATION := {"left": PI / 2.0, "right": -PI / 2.0}   # the hand meshes are authored with fingers along -Z and palms along -Y
 const CLOSE_TIME := 0.12                                         # seconds the fingers take to close onto what they hold
 const SOLUTION := "res://assets/hands/grip_solution.json"
+const HOLD_TIME := 0.10                                          # seconds the fingers take to close onto a held prop (the blowtorch)
 # Conventional authored grip profiles: the hand holds a fixed pose instead of closing blindly through the mesh.
 const GRIP_POSES := {
 	"thin": {"animation": "Grip", "amount": 0.86},
@@ -37,6 +38,8 @@ class HandState:
 	var bar_offset := Vector3.ZERO  # the solved plate in the grip socket's frame
 	var plate_out := Vector3.RIGHT
 	var paths := {}                 # finger -> Array of poses (a joint amount per joint) the fingers pass through closing on the plate
+	var hold = null                 # while holding a prop: how far each finger closes (thumb, index_released, index_pressed, middle, ring, pinky)
+	var hold_blend := 0.0           # 0..1: how far the fingers have closed onto it
 
 	func squeeze() -> float:
 		return controller.get_float("grip")
@@ -129,6 +132,21 @@ func _update_pose(s: HandState, dt: float) -> void:
 		s.model.set_pose("Pinch", trigger)
 	else:
 		s.model.set_pose("Open", 0.0)
+	if s.hold != null:
+		# a hand holding a prop closes each finger by the amount solved for it (so none goes into the prop); the index finger rests on the
+		# trigger and follows it
+		s.hold_blend = minf(1.0, s.hold_blend + maxf(0.0, dt) / HOLD_TIME)
+		var settle := smoothstep(0.0, 1.0, s.hold_blend)
+		for finger in s.joints:
+			var target: float = s.hold.get(finger, 0.0)
+			var start := 0.65 * squeeze
+			if finger == "index":
+				target = lerpf(s.hold.get("index_released", 0.0), s.hold.get("index_pressed", 0.0), clampf(trigger * 1.1, 0.0, 1.0))
+				start = 0.65 * trigger
+			var amount := lerpf(start, target, settle)
+			for j: Joint in s.joints[finger]:
+				s.model.set_joint(j.bone, amount, j.open, j.grip, j.fist)
+		return
 	if s.held and not s.paths.is_empty():
 		s.path_elapsed = minf(CLOSE_TIME, s.path_elapsed + maxf(0.0, dt))
 		for finger in s.joints:
