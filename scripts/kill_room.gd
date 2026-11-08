@@ -634,7 +634,10 @@ func _build_lights() -> void:
 # ---- props -----------------------------------------------------------------------------------------------------------------------------
 
 func _build_props() -> void:
-	add_prop("steel_frame_shelves_01", Vector3(X1 - 0.3, 0, -5.4), -90.0, true, true, 2.14)
+	add_prop("steel_frame_shelves_01", Vector3(X1 - 0.3, 0, -5.4), -90.0, false, true, 2.14)
+	# the shelves are solid boards you can stand things on (not one box): 0.5 m deep, 1.1 m wide
+	for top in [0.135, 0.64, SHELF_BOARD, 1.65]:
+		_static_box("ShelfBoard%d" % int(top * 1000.0), Vector3(X1 - 0.3, top - 0.015, -5.4), Vector3(0.5, 0.03, 1.1))
 	add_prop("industrial_storage_cart", Vector3(X0 + 0.7, 0, -1.2), 90.0, true, true, 0.95)
 	add_prop("BarberShopChair_01", Vector3(-2.6, 0, -3.6), 90.0)
 	add_prop("wheelchair_01", Vector3(-2.9, 0, 1.7), 140.0)
@@ -654,11 +657,11 @@ func _build_props() -> void:
 	radio.position = Vector3(X1 - 0.38, SHELF_BOARD + 0.002, -5.25)
 	radio.rotation_degrees.y = -90.0
 	props.add_child(radio)
-	# the blowtorch standing on the table, at the end nearest the door you come in by
+	# the blowtorch standing on the same shelf as the radio, nozzle out into the room
 	torch = Blowtorch.new()
 	torch.name = "Blowtorch"
-	torch.position = Vector3(TABLE_POS.x + 0.2, TABLE_TOP + 0.006, TABLE_POS.z + 0.8)
-	torch.rotation_degrees.y = -35.0
+	torch.position = Vector3(X1 - 0.38, SHELF_BOARD + 0.006, -5.7)
+	torch.rotation_degrees.y = 90.0
 	props.add_child(torch)
 
 

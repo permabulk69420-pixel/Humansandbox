@@ -47,7 +47,7 @@ func _ready() -> void:
 	stream.loop = true
 	song.stream = stream
 	song.position = Vector3(-0.07, 0.1, 0.03) * model_scale       # the speaker, behind the grille
-	song.unit_size = 3.5
+	song.unit_size = 14.0
 	song.max_distance = 30.0
 	song.volume_db = -3.0
 	song.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE

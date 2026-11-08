@@ -209,9 +209,10 @@ void vertex() {
 	VERTEX.z *= 1.0 + 0.07 * sin(TIME * 33.0);
 }
 void fragment() {
-	float facing = pow(clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 1.3);
-	ALBEDO = mix(base_color, tip_color, smoothstep(0.1, 1.0, along)) * strength * 1.6;
-	ALPHA = clamp(facing * pow(1.0 - along, 0.55) * strength, 0.0, 1.0);
+	float facing = clamp(abs(dot(normalize(NORMAL), normalize(VIEW))), 0.0, 1.0);
+	float body = mix(0.5, 1.0, facing);
+	ALBEDO = mix(base_color, tip_color, smoothstep(0.1, 1.0, along)) * strength * 2.0;
+	ALPHA = clamp(body * pow(1.0 - along, 0.45) * strength * 1.2, 0.0, 1.0);
 }
 """
 	# an outer flame, orange at the tip, and a short hot blue core inside it
