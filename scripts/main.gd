@@ -14,9 +14,12 @@ const TURN_SPEED := deg_to_rad(110.0)   # rad/s turning with the right stick (or
 const STICK_DEADZONE := 0.2
 const PERSONAL_SPACE := 0.45       # walking cannot take you closer than this to her
 const ROOM_MIN := Vector2(KillRoom.HALL_X0 + 0.3, KillRoom.HALL_ZN + 0.3)   # the walls (room and hallway), as a backstop in case the collision ever lets you through (x, z)
-const ROOM_MAX := Vector2(KillRoom.HALL_X1 - 0.3, KillRoom.Z1 - 0.3)
+const ROOM_MAX := Vector2(KillRoom.STAIR_X1 - 0.3, KillRoom.Z1 - 0.3)
 const BODY_RADIUS := 0.28          # your body, for bumping into the room and its props
 const BODY_HEIGHT := 1.6
+const WALKABLE_LAYER := 16         # physics layer of the stairs and landings you can climb
+const STEP_REACH := 0.45           # how far above your feet the floor is looked for (just over a step)
+const STEP_DROP := 0.8             # and how far below your feet
 const BODY_LIFT := 0.15            # it floats this far off the floor, so low things (the drain cover, a threshold) do not stop you
 const EYE_HEIGHT := 1.62           # flat-screen camera height
 
@@ -78,7 +81,7 @@ func _ready() -> void:
 		hands = VrHands.new({"left": left_controller, "right": right_controller})
 		KillRoom.apply_anisotropic(left_controller)    # the hand models hang off the controllers
 		KillRoom.apply_anisotropic(right_controller)
-		interactions = HandInteractions.new(hands, room.radio, room.torch, room.knife, room.door)
+		interactions = HandInteractions.new(hands, room.radio, room.torch, room.knife, [room.door, room.stair_door_bottom, room.stair_door_top])
 		detector.add_hand("left", left_controller)
 		detector.add_hand("right", right_controller)
 	detector.punched.connect(_on_punched)
@@ -201,6 +204,18 @@ func locomote(move: Vector2, turn: float, dt: float) -> void:
 			rig.global_position += Vector3(push.x, 0.0, push.y)
 		rig.global_position.x = clampf(rig.global_position.x, ROOM_MIN.x, ROOM_MAX.x)
 		rig.global_position.z = clampf(rig.global_position.z, ROOM_MIN.y, ROOM_MAX.y)
+	_follow_ground(dt)
+
+
+# You climb: where the floor is a staircase or a landing (solid things on the walkable layer), your height follows it; everywhere else the
+# floor is level. Looks down from a little above your feet, so a tall thing like a table is never mistaken for floor.
+func _follow_ground(dt: float) -> void:
+	var from := Vector3(camera.global_position.x, rig.global_position.y + STEP_REACH, camera.global_position.z)
+	var query := PhysicsRayQueryParameters3D.create(from, from + Vector3(0.0, -(STEP_REACH + STEP_DROP), 0.0), WALKABLE_LAYER)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var ground: float = hit.position.y if not hit.is_empty() else 0.0
+	if absf(ground - rig.global_position.y) > 0.0005:
+		rig.global_position.y = lerpf(rig.global_position.y, ground, 1.0 - exp(-14.0 * dt))
 
 
 # Moves your body through the room's collision and returns how far it really got, sliding along walls and props instead of sticking.

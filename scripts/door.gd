@@ -6,6 +6,8 @@ extends Node3D
 const LIMIT := deg_to_rad(105.0)
 
 var held_by := ""
+var locked := false                  # a locked door cannot be taken hold of
+var base_yaw := 0.0                  # how the closed door is turned in the world (the swing is added to it)
 var handles: Array[Vector3] = []     # where to take hold of it, in the door's own space (one on each face)
 var angle := 0.0
 var _grab_hand_angle := 0.0
@@ -14,7 +16,7 @@ var _grab_door_angle := 0.0
 
 func set_angle(value: float) -> void:
 	angle = clampf(value, -LIMIT, LIMIT)
-	rotation.y = angle
+	rotation.y = base_yaw + angle
 
 
 # How far a point (a hand, in the world) is from the nearest handle.
@@ -26,6 +28,8 @@ func grab_distance(world_point: Vector3) -> float:
 
 
 func grab(hand: String, world_point: Vector3) -> void:
+	if locked:
+		return
 	held_by = hand
 	_grab_hand_angle = _hand_angle(world_point)
 	_grab_door_angle = angle

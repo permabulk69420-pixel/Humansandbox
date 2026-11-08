@@ -12,16 +12,18 @@ var hands: VrHands
 var radio: Radio
 var torch: Blowtorch
 var knife: KitchenKnife
-var door: HingedDoor
+var doors: Array[HingedDoor] = []
 var _last_squeeze := {}
 
 
-func _init(p_hands: VrHands, p_radio: Radio, p_torch: Blowtorch, p_knife: KitchenKnife = null, p_door: HingedDoor = null) -> void:
+func _init(p_hands: VrHands, p_radio: Radio, p_torch: Blowtorch, p_knife: KitchenKnife = null, p_doors: Array = []) -> void:
 	hands = p_hands
 	radio = p_radio
 	torch = p_torch
 	knife = p_knife
-	door = p_door
+	for d in p_doors:
+		if d != null:
+			doors.append(d)
 
 
 # Call once a frame, before VrHands.update() so the poses it chooses are used straight away.
@@ -36,25 +38,31 @@ func update(dt: float) -> void:
 			if held_prop != null:
 				held_prop.release()
 				s.hold = null
-			if door != null and door.held_by == hand:
-				door.release()
+			for d in doors:
+				if d.held_by == hand:
+					d.release()
 			_last_squeeze.erase(hand)
 			continue
 		var squeeze: float = s.squeeze()
 		var trigger: float = s.trigger()
 		var was: float = _last_squeeze.get(hand, 0.0)
 		_last_squeeze[hand] = squeeze
-		if door != null:
-			if door.held_by == hand:
+		var on_door := false
+		for d in doors:
+			if d.held_by == hand:
 				if squeeze < GRAB_OFF:
-					door.release()
+					d.release()
 				else:
-					door.drag(s.controller.global_position)
-					continue
-			elif held_prop == null and door.held_by == "" and squeeze > GRAB_ON and was <= GRAB_ON \
-					and door.grab_distance(s.controller.global_position) < DOOR_GRAB_RADIUS:
-				door.grab(hand, s.controller.global_position)
-				continue
+					d.drag(s.controller.global_position)
+					on_door = true
+			elif held_prop == null and d.held_by == "" and squeeze > GRAB_ON and was <= GRAB_ON \
+					and d.grab_distance(s.controller.global_position) < DOOR_GRAB_RADIUS:
+				d.grab(hand, s.controller.global_position)
+				on_door = d.held_by == hand
+			if on_door:
+				break
+		if on_door:
+			continue
 		var holding := held_prop != null
 		if holding:
 			if held_prop == torch:

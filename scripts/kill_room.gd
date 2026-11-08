@@ -26,6 +26,20 @@ const HALL_X0 := (DOOR_X0 + DOOR_X1) * 0.5 - HALL_RUN
 const HALL_X1 := (DOOR_X0 + DOOR_X1) * 0.5 + HALL_RUN
 const HALL_ZS := Z0 - WALL_T         # its south wall: the back of the room's north wall
 const HALL_ZN := Z0 - WALL_T - HALL_W   # its north wall
+# The hallway's east end leads to a stairwell: two flights up (with a landing between) to a club that is to be built above the room.
+const STAIR_RISE := 3.6                           # the club floor: level with the top of the room's ceiling slab
+const STAIR_STEPS := 10                           # steps in each of the two flights
+const STAIR_STEP_H := STAIR_RISE / 20.0           # 18 cm
+const STAIR_STEP_D := 0.28
+const STAIR_X0 := HALL_X1 + 1.2                   # the foot of the first flight (1.2 m of vestibule behind the bottom door)
+const STAIR_LANDING_X0 := STAIR_X0 + STAIR_STEPS * STAIR_STEP_D
+const STAIR_X1 := STAIR_LANDING_X0 + 1.2          # the far wall
+const STAIR_CEIL := 6.2
+const STAIR_LANE := 1.1                           # width of each flight (they run side by side, with a 20 cm wall between)
+const STAIR_DOOR_Z0 := HALL_ZN + 0.55             # the doorways (bottom and top) are 1.3 m wide
+const STAIR_DOOR_Z1 := STAIR_DOOR_Z0 + 1.3
+const STAIR_DOOR_H := 2.3
+const WALKABLE := 16                              # physics layer of the surfaces you climb on
 const BEAM_Z: Array[float] = [-7.0, -4.9, -0.7, 1.4]    # steel beams under the ceiling, wall to wall
 const BEAM_DROP := 0.26
 
@@ -69,6 +83,8 @@ var radio: Radio
 var torch: Blowtorch
 var knife: KitchenKnife
 var door: HingedDoor
+var stair_door_bottom: HingedDoor
+var stair_door_top: HingedDoor
 var _materials := {}
 var _batches := {}
 var _noise := FastNoiseLite.new()
@@ -110,6 +126,7 @@ func _ready() -> void:
 	_build_rail(X1 - 1.3, -3.4, 1.6)      # a second rail down the east side
 	_build_door()
 	_build_hallway()
+	_build_stairs()
 	_flush_batches()
 	_build_environment()
 	_build_lights()
@@ -393,7 +410,7 @@ func _static_box(box_name: String, center: Vector3, size: Vector3, parent: Node 
 # A wall piece between two points on the floor plan, as seen from inside the room: `left` is on your left. Tile below, a trim strip,
 # plaster above.
 func _wall(left: Vector2, right: Vector2, ya: float, yb: float, store = null) -> void:
-	var spans := [["tile", 0.0, TILE_TOP], ["steel", TILE_TOP, TILE_TOP + TRIM], ["plaster", TILE_TOP + TRIM, H]]
+	var spans := [["tile", 0.0, TILE_TOP], ["steel", TILE_TOP, TILE_TOP + TRIM], ["plaster", TILE_TOP + TRIM, maxf(H, yb)]]
 	for s in spans:
 		var lo := maxf(ya, s[1])
 		var hi := minf(yb, s[2])
@@ -617,8 +634,10 @@ func _build_hallway() -> void:
 			_wall(Vector2(xb, HALL_ZS), Vector2(xa, HALL_ZS), 0.0, H, walls)
 		if i == 0:                                   # the west end
 			_wall(Vector2(xa, HALL_ZS), Vector2(xa, HALL_ZN), 0.0, H, walls)
-		if i == edges.size() - 2:                    # the east end
-			_wall(Vector2(xb, HALL_ZN), Vector2(xb, HALL_ZS), 0.0, H, walls)
+		if i == edges.size() - 2:                    # the east end, with the doorway to the stairs in it
+			_wall(Vector2(xb, HALL_ZN), Vector2(xb, STAIR_DOOR_Z0), 0.0, H, walls)
+			_wall(Vector2(xb, STAIR_DOOR_Z1), Vector2(xb, HALL_ZS), 0.0, H, walls)
+			_wall(Vector2(xb, STAIR_DOOR_Z0), Vector2(xb, STAIR_DOOR_Z1), STAIR_DOOR_H, H, walls)
 		var batches: Array = [floor_b, ceil_b]
 		batches.append_array(walls.values())
 		for b in batches:
@@ -631,7 +650,9 @@ func _build_hallway() -> void:
 	var span_x := HALL_X1 - HALL_X0
 	_static_box("HallNorth", Vector3((HALL_X0 + HALL_X1) * 0.5, H * 0.5, HALL_ZN - 0.3), Vector3(span_x + 1.2, H, 0.6))
 	_static_box("HallWest", Vector3(HALL_X0 - 0.3, H * 0.5, (HALL_ZN - 0.6 + Z0) * 0.5), Vector3(0.6, H, Z0 - HALL_ZN + 0.6))
-	_static_box("HallEast", Vector3(HALL_X1 + 0.3, H * 0.5, (HALL_ZN - 0.6 + Z0) * 0.5), Vector3(0.6, H, Z0 - HALL_ZN + 0.6))
+	_static_box("HallEastNorth", Vector3(HALL_X1, H * 0.5, (HALL_ZN - 0.3 + STAIR_DOOR_Z0) * 0.5), Vector3(0.2, H, STAIR_DOOR_Z0 - HALL_ZN + 0.3))
+	_static_box("HallEastSouth", Vector3(HALL_X1, H * 0.5, (STAIR_DOOR_Z1 + Z0) * 0.5), Vector3(0.2, H, Z0 - STAIR_DOOR_Z1))
+	_static_box("HallEastLintel", Vector3(HALL_X1, (STAIR_DOOR_H + H) * 0.5, (STAIR_DOOR_Z0 + STAIR_DOOR_Z1) * 0.5), Vector3(0.2, H - STAIR_DOOR_H, STAIR_DOOR_Z1 - STAIR_DOOR_Z0))
 	var west_len := (X0 - WALL_T) - (HALL_X0 - 0.6)
 	var east_len := (HALL_X1 + 0.6) - (X1 + WALL_T)
 	_static_box("HallSouthWest", Vector3(HALL_X0 - 0.6 + west_len * 0.5, H * 0.5, HALL_ZS + 0.3), Vector3(west_len, H, 0.6))
@@ -653,6 +674,149 @@ func _build_hallway() -> void:
 		lamp.light_energy = 0.85
 		lamp.omni_range = 5.5
 		add_child(lamp)
+
+
+# ---- the stairs ----------------------------------------------------------------------------------------------------------------------
+
+# Through the heavy door at the end of the hallway: a vestibule, a flight up, a landing, a second flight back the other way, and a top landing
+# with a second heavy door (locked, for now). The flights run side by side with a wall between them, so nothing of one can be seen from
+# the other. You climb them by walking: the stairs have invisible walkable slabs on their own physics layer, which main.gd follows.
+func _build_stairs() -> void:
+	var cz := (HALL_ZN + HALL_ZS) * 0.5
+	var floor_b := Batch.new(_materials["floor"])
+	var ceil_b := Batch.new(_materials["ceiling"])
+	var walls := {}
+	var ft := _tile("floor")
+	var ct := _tile("ceiling")
+	# floor of the vestibule, the underside of the slab over it, the top landing, and the ceiling high above the stairs
+	_quad(floor_b, Vector3(HALL_X1, 0, HALL_ZN), Vector3(STAIR_X1, 0, HALL_ZN), Vector3(STAIR_X1, 0, HALL_ZS), Vector3(HALL_X1, 0, HALL_ZS), ft, Vector2(HALL_X1, HALL_ZN) / ft, 0.5, "floor")
+	_quad(ceil_b, Vector3(HALL_X1, H, HALL_ZS), Vector3(STAIR_X0, H, HALL_ZS), Vector3(STAIR_X0, H, HALL_ZN), Vector3(HALL_X1, H, HALL_ZN), ct, Vector2(HALL_X1, HALL_ZN) / ct, 0.5, "ceiling")
+	_quad(floor_b, Vector3(HALL_X1, STAIR_RISE, HALL_ZN), Vector3(STAIR_X0, STAIR_RISE, HALL_ZN), Vector3(STAIR_X0, STAIR_RISE, HALL_ZS), Vector3(HALL_X1, STAIR_RISE, HALL_ZS), ft, Vector2(HALL_X1, HALL_ZN) / ft, 0.5, "floor")
+	_quad(ceil_b, Vector3(HALL_X1, STAIR_CEIL, HALL_ZS), Vector3(STAIR_X1, STAIR_CEIL, HALL_ZS), Vector3(STAIR_X1, STAIR_CEIL, HALL_ZN), Vector3(HALL_X1, STAIR_CEIL, HALL_ZN), ct, Vector2(HALL_X1, HALL_ZN) / ct, 0.5, "ceiling")
+	# walls, as seen from inside
+	_wall(Vector2(HALL_X1, HALL_ZN), Vector2(STAIR_X1, HALL_ZN), 0.0, STAIR_CEIL, walls)         # north
+	_wall(Vector2(STAIR_X1, HALL_ZS), Vector2(HALL_X1, HALL_ZS), 0.0, STAIR_CEIL, walls)         # south
+	_wall(Vector2(STAIR_X1, HALL_ZN), Vector2(STAIR_X1, HALL_ZS), 0.0, STAIR_CEIL, walls)         # east, the far end
+	# west: the back of the hallway's end wall, with the bottom doorway; and above it, the top landing's wall with the top doorway
+	for level in [[0.0, STAIR_RISE], [STAIR_RISE, STAIR_CEIL]]:
+		var base: float = level[0]
+		var top: float = level[1]
+		_wall(Vector2(HALL_X1, HALL_ZS), Vector2(HALL_X1, STAIR_DOOR_Z1), base, top, walls)
+		_wall(Vector2(HALL_X1, STAIR_DOOR_Z0), Vector2(HALL_X1, HALL_ZN), base, top, walls)
+		_wall(Vector2(HALL_X1, STAIR_DOOR_Z1), Vector2(HALL_X1, STAIR_DOOR_Z0), base + STAIR_DOOR_H, top, walls)
+	# the steps: solid blocks, first flight along the north lane going east, second along the south lane coming back west
+	var step_b := Batch.new(_materials["floor"])
+	var north_z := HALL_ZN + STAIR_LANE * 0.5
+	var south_z := HALL_ZS - STAIR_LANE * 0.5
+	for i in STAIR_STEPS:
+		var top1 := (i + 1) * STAIR_STEP_H
+		var x1 := STAIR_X0 + (i + 0.5) * STAIR_STEP_D
+		_box(step_b, Vector3(x1, top1 * 0.5, north_z), Vector3(STAIR_STEP_D, top1, STAIR_LANE), ft)
+		_walkable(Vector3(x1, top1 - 0.05, north_z), Vector3(STAIR_STEP_D, 0.1, STAIR_LANE))
+		var top2 := STAIR_RISE * 0.5 + (i + 1) * STAIR_STEP_H
+		var x2 := STAIR_LANDING_X0 - (i + 0.5) * STAIR_STEP_D
+		_box(step_b, Vector3(x2, top2 * 0.5, south_z), Vector3(STAIR_STEP_D, top2, STAIR_LANE), ft)
+		_walkable(Vector3(x2, top2 - 0.05, south_z), Vector3(STAIR_STEP_D, 0.1, STAIR_LANE))
+	# the landing between the flights, and the wall between them
+	var landing_x := (STAIR_LANDING_X0 + STAIR_X1) * 0.5
+	_box(step_b, Vector3(landing_x, STAIR_RISE * 0.25, cz), Vector3(STAIR_X1 - STAIR_LANDING_X0, STAIR_RISE * 0.5, HALL_ZS - HALL_ZN), ft)
+	_walkable(Vector3(landing_x, STAIR_RISE * 0.5 - 0.05, cz), Vector3(STAIR_X1 - STAIR_LANDING_X0, 0.1, HALL_ZS - HALL_ZN))
+	_walkable(Vector3((HALL_X1 + STAIR_X0) * 0.5, STAIR_RISE - 0.05, cz), Vector3(STAIR_X0 - HALL_X1, 0.1, HALL_ZS - HALL_ZN))     # the top landing
+	var divider := Batch.new(_materials["plaster"])
+	_box(divider, Vector3((STAIR_X0 + STAIR_LANDING_X0) * 0.5, STAIR_CEIL * 0.5, cz), Vector3(STAIR_LANDING_X0 - STAIR_X0, STAIR_CEIL, 0.2), _tile("plaster"))
+	var batches: Array = [floor_b, ceil_b, step_b, divider]
+	batches.append_array(walls.values())
+	for b in batches:
+		var mi := MeshInstance3D.new()
+		mi.name = "Stairwell"
+		mi.mesh = _commit(b)
+		add_child(mi)
+	# solid walls and ceiling (the steps are not solid to you: you climb them)
+	var long := STAIR_X1 - HALL_X1
+	var mid_x := (HALL_X1 + STAIR_X1) * 0.5
+	_static_box("StairNorth", Vector3(mid_x, STAIR_CEIL * 0.5, HALL_ZN - 0.3), Vector3(long + 0.6, STAIR_CEIL, 0.6))
+	_static_box("StairSouth", Vector3(mid_x, STAIR_CEIL * 0.5, HALL_ZS + 0.3), Vector3(long + 0.6, STAIR_CEIL, 0.6))
+	_static_box("StairEast", Vector3(STAIR_X1 + 0.3, STAIR_CEIL * 0.5, cz), Vector3(0.6, STAIR_CEIL, HALL_ZS - HALL_ZN + 1.2))
+	_static_box("StairCeiling", Vector3(mid_x, STAIR_CEIL + 0.2, cz), Vector3(long + 1.2, 0.4, HALL_ZS - HALL_ZN + 1.2))
+	_static_box("StairDivider", Vector3((STAIR_X0 + STAIR_LANDING_X0) * 0.5, STAIR_CEIL * 0.5, cz), Vector3(STAIR_LANDING_X0 - STAIR_X0, STAIR_CEIL, 0.2))
+	# the top landing's west wall (above the hallway's end wall), with the top doorway cut out of it
+	var top_h := STAIR_CEIL - STAIR_RISE
+	_static_box("TopWestNorth", Vector3(HALL_X1, STAIR_RISE + top_h * 0.5, (HALL_ZN - 0.3 + STAIR_DOOR_Z0) * 0.5), Vector3(0.2, top_h, STAIR_DOOR_Z0 - HALL_ZN + 0.3))
+	_static_box("TopWestSouth", Vector3(HALL_X1, STAIR_RISE + top_h * 0.5, (STAIR_DOOR_Z1 + HALL_ZS + 0.3) * 0.5), Vector3(0.2, top_h, HALL_ZS - STAIR_DOOR_Z1 + 0.3))
+	_static_box("TopWestLintel", Vector3(HALL_X1, STAIR_RISE + STAIR_DOOR_H + (top_h - STAIR_DOOR_H) * 0.5, (STAIR_DOOR_Z0 + STAIR_DOOR_Z1) * 0.5), Vector3(0.2, top_h - STAIR_DOOR_H, STAIR_DOOR_Z1 - STAIR_DOOR_Z0))
+	# the doors: the bottom one opens; the top one is locked until there is a club behind it
+	stair_door_bottom = _heavy_door(Vector3(HALL_X1, 0.0, STAIR_DOOR_Z0 + 0.02), false)
+	stair_door_top = _heavy_door(Vector3(HALL_X1, STAIR_RISE, STAIR_DOOR_Z0 + 0.02), true)
+	# lights: over the vestibule, over the landing, and over the top
+	for spot in [Vector3(HALL_X1 + 0.7, H - 0.2, cz), Vector3(STAIR_LANDING_X0 + 0.5, STAIR_CEIL - 0.3, cz), Vector3(HALL_X1 + 0.7, STAIR_CEIL - 0.3, cz)]:
+		var fixture := _load_model("caged_hanging_light")
+		if fixture != null:
+			fixture.position = Vector3(spot.x, spot.y + 0.2, spot.z)
+			add_child(fixture)
+			_set_shadows(fixture, false)
+		var lamp := OmniLight3D.new()
+		lamp.position = Vector3(spot.x, spot.y - 0.5, spot.z)
+		lamp.light_color = Color(0.7, 1.0, 0.82)
+		lamp.light_energy = 0.8
+		lamp.omni_range = 5.5
+		add_child(lamp)
+
+
+# A solid slab you can walk on (on its own physics layer, seen by nothing but the climbing ray in main.gd).
+func _walkable(center: Vector3, size: Vector3) -> void:
+	var slab := StaticBody3D.new()
+	slab.collision_layer = WALKABLE
+	slab.collision_mask = 0
+	slab.position = center
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	shape.shape = box
+	slab.add_child(shape)
+	collision_root.add_child(slab)
+
+
+# A heavy steel door in the wall at x = HALL_X1: 1.25 m wide and 2.2 m tall, hinged on its north side, with ribs, hinges and a bar handle on
+# each face. `hinge` is where it turns. Closed, it fills the doorway; the swing is the same grab-the-handle one as the room's door.
+func _heavy_door(hinge: Vector3, locked: bool) -> HingedDoor:
+	var width := 1.25
+	var tall := 2.2
+	var thick := 0.09
+	var steel := Batch.new(_materials["steel"])
+	var st := _tile("steel")
+	_box(steel, Vector3(-width * 0.5, tall * 0.5, 0.0), Vector3(width - 0.02, tall, thick), st)
+	for y in [0.35, 1.1, 1.85]:
+		for side in [1.0, -1.0]:
+			_box(steel, Vector3(-width * 0.5, y, side * (thick * 0.5 + 0.012)), Vector3(width - 0.14, 0.1, 0.024), st)       # riveted ribs
+	for y in [0.3, 1.1, 1.9]:
+		_box(steel, Vector3(-0.07, y, 0.0), Vector3(0.14, 0.16, thick + 0.05), st)                                         # the hinges
+	var handles: Array[Vector3] = []
+	for side in [1.0, -1.0]:
+		var hx := -width + 0.16
+		_cyl(steel, Vector3(hx, 0.85, side * (thick * 0.5 + 0.05)), Vector3(hx, 1.45, side * (thick * 0.5 + 0.05)), 0.016, st, 10, true)    # the pull bar
+		for y in [0.88, 1.42]:
+			_cyl(steel, Vector3(hx, y, side * thick * 0.5), Vector3(hx, y, side * (thick * 0.5 + 0.05)), 0.012, st, 8, true)           # its two standoffs
+		handles.append(Vector3(hx, 1.15, side * (thick * 0.5 + 0.05)))
+	var leaf := HingedDoor.new()
+	leaf.name = "HeavyDoor"
+	leaf.base_yaw = PI * 0.5            # the leaf runs south from its hinge along the wall, and swings up (+x) or back (-x) from there
+	leaf.rotation.y = leaf.base_yaw
+	leaf.position = hinge
+	leaf.locked = locked
+	leaf.handles = handles
+	var mi := MeshInstance3D.new()
+	mi.mesh = _commit(steel)
+	leaf.add_child(mi)
+	add_child(leaf)
+	_static_box("HeavyDoorSlab", Vector3(-width * 0.5, tall * 0.5, 0.0), Vector3(width - 0.02, tall, thick + 0.04), leaf)
+	# the frame round the doorway
+	var frame := _batch("steel")
+	var jamb_z0 := STAIR_DOOR_Z0 - 0.07
+	var jamb_z1 := STAIR_DOOR_Z1 + 0.07
+	_box(frame, Vector3(HALL_X1, hinge.y + tall * 0.5 + 0.05, jamb_z0), Vector3(0.2, tall + 0.1, 0.14), _tile("steel"))
+	_box(frame, Vector3(HALL_X1, hinge.y + tall * 0.5 + 0.05, jamb_z1), Vector3(0.2, tall + 0.1, 0.14), _tile("steel"))
+	_box(frame, Vector3(HALL_X1, hinge.y + tall + 0.1, (jamb_z0 + jamb_z1) * 0.5), Vector3(0.2, 0.14, jamb_z1 - jamb_z0), _tile("steel"))
+	return leaf
 
 
 # ---- environment and lights ------------------------------------------------------------------------------------------------------------
