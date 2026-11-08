@@ -556,7 +556,7 @@ func _build_environment() -> void:
 	env.background_color = Color(0.0, 0.0, 0.0)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.32, 0.4, 0.42)
-	env.ambient_light_energy = 0.3
+	env.ambient_light_energy = 0.15
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.05, 0.065, 0.06)
 	env.fog_density = 0.03
@@ -637,10 +637,16 @@ func _build_props() -> void:
 	add_prop("steel_frame_shelves_01", Vector3(X1 - 0.3, 0, -5.4), -90.0, true, true, 2.14)
 	add_prop("industrial_storage_cart", Vector3(X0 + 0.7, 0, -1.2), 90.0, true, true, 0.95)
 	add_prop("BarberShopChair_01", Vector3(-2.6, 0, -3.6), 90.0)
-	add_prop("wheelchair_01", Vector3(-2.9, 0, 1.7), -40.0)
+	add_prop("wheelchair_01", Vector3(-2.9, 0, 1.7), 140.0)
 	add_prop("metal_stool_01", Vector3(-0.95, 0, -4.1), 15.0)
 	add_prop("wooden_bucket_01", Vector3(1.6, 0, -3.9), 0.0)
-	add_prop("water_manhole_cover", Vector3(1.2, 0, -2.7), 0.0, false)
+	# the south and east walls
+	add_prop("metal_tool_chest", Vector3(X1 - 0.4, 0, -1.2), 90.0)
+	add_prop("Barrel_01", Vector3(X1 - 0.5, 0, 2.3), 0.0)
+	add_prop("Barrel_02", Vector3(X1 - 1.25, 0, 2.5), 40.0)
+	add_prop("wooden_crate_01", Vector3(-1.4, 0, Z1 - 0.5), 10.0)
+	add_prop("wooden_crate_01", Vector3(-0.6, 0, Z1 - 0.5), -15.0)
+	add_prop("metal_jerrycan", Vector3(0.6, 0, Z1 - 0.3), 25.0)
 	# the radio on the shelves, facing into the room, shrunk 5% so its antenna clears the board above
 	radio = Radio.new()
 	radio.name = "Radio"

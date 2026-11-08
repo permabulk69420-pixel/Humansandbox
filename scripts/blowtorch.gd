@@ -133,7 +133,7 @@ func grab(hand: String, controller: Node3D) -> void:
 	var offset := Vector3(mine.offset[0], mine.offset[1], mine.offset[2])
 	var basis := Basis(Vector3.UP, deg_to_rad(mine.get("yaw", 0.0))) * Basis(Vector3.RIGHT, deg_to_rad(mine.get("pitch", 0.0))) * Basis(Vector3.BACK, deg_to_rad(mine.get("roll", 0.0)))
 	# the model is already scaled, so the torch node itself carries only the turn: GripPoint (scaled) lands on `offset`
-	_hold = Transform3D(basis, offset - basis * (grip_point * torch_scale))
+	_hold = Transform3D(Basis(Vector3.RIGHT, VrHands.HAND_PITCH), Vector3.ZERO) * Transform3D(basis, offset - basis * (grip_point * torch_scale))
 	_grab_from = global_transform
 	_grab_t = 0.0
 	_history.clear()

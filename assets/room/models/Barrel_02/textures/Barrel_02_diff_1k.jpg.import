@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cfw6gsrnl734q"
-path.s3tc="res://.godot/imported/water_manhole_cover_arm_1k.jpg-26944dc3417a1f1e4b4a6d31c28d809f.s3tc.ctex"
-path.etc2="res://.godot/imported/water_manhole_cover_arm_1k.jpg-26944dc3417a1f1e4b4a6d31c28d809f.etc2.ctex"
+uid="uid://dn564rht5pqd7"
+path.s3tc="res://.godot/imported/Barrel_02_diff_1k.jpg-fd46745427c38332fda790c41821b4d1.s3tc.ctex"
+path.etc2="res://.godot/imported/Barrel_02_diff_1k.jpg-fd46745427c38332fda790c41821b4d1.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/room/models/water_manhole_cover/textures/water_manhole_cover_arm_1k.jpg"
-dest_files=["res://.godot/imported/water_manhole_cover_arm_1k.jpg-26944dc3417a1f1e4b4a6d31c28d809f.s3tc.ctex", "res://.godot/imported/water_manhole_cover_arm_1k.jpg-26944dc3417a1f1e4b4a6d31c28d809f.etc2.ctex"]
+source_file="res://assets/room/models/Barrel_02/textures/Barrel_02_diff_1k.jpg"
+dest_files=["res://.godot/imported/Barrel_02_diff_1k.jpg-fd46745427c38332fda790c41821b4d1.s3tc.ctex", "res://.godot/imported/Barrel_02_diff_1k.jpg-fd46745427c38332fda790c41821b4d1.etc2.ctex"]
 
 [params]
 

@@ -1,4 +1,4 @@
-# The vintage tabletop radio (assets/props/radio/creepy_tabletop_radio.glb). Flick your hand past the power switch and it plays the song;
+# The vintage tabletop radio (assets/props/radio/creepy_tabletop_radio.glb). Move a hand up to the power switch and it plays the song;
 # flick it again and it stops (and picks up where it left off the next time). The switch is the model's own PowerSwitch pivot, moved by
 # its Power_On / Power_Off clips.
 #
@@ -14,8 +14,7 @@ const SONG := "res://assets/audio/creepysong.mp3"
 const CLIP_LEVER_UP := "Power_Off"      # starts down, ends up: the lever's swing to ON
 const CLIP_LEVER_DOWN := "Power_On"     # starts up, ends down: the lever's swing to OFF
 const LEVER_TIP := Vector3(0.0, 0.0, 0.010)      # the end of the lever mesh, in the lever's own space
-const FLICK_REACH := 0.045              # a fingertip this close to the lever...
-const FLICK_SPEED := 0.6                # ...moving at least this fast (m/s) flicks it
+const FLICK_REACH := 0.045              # a fingertip that comes this close to the lever flicks it
 const COOLDOWN := 0.5                   # seconds before the lever can be flipped again
 
 var model_scale := 1.0                   # set before adding to the scene: how big the set is, relative to the model
@@ -27,7 +26,7 @@ var song: AudioStreamPlayer3D
 var click: AudioStreamPlayer3D
 var _song_started := false
 var _cooldown := 0.0
-var _last_tip := {}                      # hand -> where its fingertip was last frame
+var _near := {}                          # hand -> whether its fingertip was at the lever last frame
 
 
 func _ready() -> void:
@@ -104,15 +103,12 @@ func toggle() -> void:
 	power(not is_on)
 
 
-# One hand's fingertip this frame (a world position). Returns true when it flipped the switch: a fingertip close to the lever and moving
-# fast, like a flick, toggles it.
-func poke(hand: String, tip: Vector3, dt: float) -> bool:
-	var last = _last_tip.get(hand)
-	_last_tip[hand] = tip
-	if _cooldown > 0.0 or last == null:
-		return false
-	var speed: float = tip.distance_to(last) / maxf(dt, 0.001)
-	if speed > FLICK_SPEED and tip.distance_to(lever_tip()) < FLICK_REACH:
+# One hand's fingertip this frame (a world position). Returns true when it flipped the switch: a fingertip coming up to the lever flicks it.
+func poke(hand: String, tip: Vector3, _dt: float) -> bool:
+	var was_near: bool = _near.get(hand, true)
+	var near := tip.distance_to(lever_tip()) < FLICK_REACH
+	_near[hand] = near
+	if near and not was_near and _cooldown <= 0.0:
 		toggle()
 		return true
 	return false

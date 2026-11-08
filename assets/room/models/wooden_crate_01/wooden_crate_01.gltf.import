@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://ku18lw05kaks"
-path="res://.godot/imported/water_manhole_cover.gltf-63e6710c053037c056d724424c68732a.scn"
+uid="uid://b7ygh2wil7h28"
+path="res://.godot/imported/wooden_crate_01.gltf-fdefdb255d0ea9838d6abc50c01d7ed8.scn"
 
 [deps]
 
-source_file="res://assets/room/models/water_manhole_cover/water_manhole_cover.gltf"
-dest_files=["res://.godot/imported/water_manhole_cover.gltf-63e6710c053037c056d724424c68732a.scn"]
+source_file="res://assets/room/models/wooden_crate_01/wooden_crate_01.gltf"
+dest_files=["res://.godot/imported/wooden_crate_01.gltf-fdefdb255d0ea9838d6abc50c01d7ed8.scn"]
 
 [params]
 

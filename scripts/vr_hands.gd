@@ -6,6 +6,7 @@ extends RefCounted
 const GRIP_ROTATION := {"left": PI / 2.0, "right": -PI / 2.0}   # the hand meshes are authored with fingers along -Z and palms along -Y
 const CLOSE_TIME := 0.12                                         # seconds the fingers take to close onto what they hold
 const SOLUTION := "res://assets/hands/grip_solution.json"
+const HAND_PITCH := deg_to_rad(-45.0)                             # the hand is lowered this much (about the controller's X axis), so holding a gun level takes a level wrist
 const HOLD_TIME := 0.10                                          # seconds the fingers take to close onto a held prop (the blowtorch)
 # Conventional authored grip profiles: the hand holds a fixed pose instead of closing blindly through the mesh.
 const GRIP_POSES := {
@@ -71,7 +72,7 @@ func _init(controllers: Dictionary) -> void:
 		s.model = model
 		s.anchor = Node3D.new()
 		s.anchor.name = "%s-hand-grip-offset" % handedness
-		s.anchor.rotation = Vector3(0.0, 0.0, GRIP_ROTATION[handedness])
+		s.anchor.basis = Basis(Vector3.RIGHT, HAND_PITCH) * Basis(Vector3.BACK, GRIP_ROTATION[handedness])
 		# The controller's grip pose is where a held thing sits in the palm: put the hand model's own grip socket there (the mesh origin
 		# is at the wrist, about 7 cm behind it).
 		s.anchor.position = -(s.anchor.basis * model.skeleton.get_bone_global_rest(model.grip_bone).origin)
