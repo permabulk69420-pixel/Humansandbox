@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bgyjliubfg4u4"
-path="res://.godot/imported/old_bed_frame.gltf-dcde7f050d3480477a96ccd56132c3a4.scn"
+uid="uid://bfqnunj0x6trk"
+path="res://.godot/imported/cross_pein_hammer.gltf-f1ceaafc492496ce595c446a2e1c30b7.scn"
 
 [deps]
 
-source_file="res://assets/room/models/old_bed_frame/old_bed_frame.gltf"
-dest_files=["res://.godot/imported/old_bed_frame.gltf-dcde7f050d3480477a96ccd56132c3a4.scn"]
+source_file="res://assets/room/models/cross_pein_hammer/cross_pein_hammer.gltf"
+dest_files=["res://.godot/imported/cross_pein_hammer.gltf-f1ceaafc492496ce595c446a2e1c30b7.scn"]
 
 [params]
 

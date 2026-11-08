@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dfxs7ordpipj1"
-path.s3tc="res://.godot/imported/old_bed_frame_arm_1k.jpg-64cbbd67deb76b99d0f48c5e9543eeca.s3tc.ctex"
-path.etc2="res://.godot/imported/old_bed_frame_arm_1k.jpg-64cbbd67deb76b99d0f48c5e9543eeca.etc2.ctex"
+uid="uid://c6xv8iwnxv177"
+path.s3tc="res://.godot/imported/rusted_hacksaw_arm_1k.jpg-ec30310e98d6adad9b67ae82c8298648.s3tc.ctex"
+path.etc2="res://.godot/imported/rusted_hacksaw_arm_1k.jpg-ec30310e98d6adad9b67ae82c8298648.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/room/models/old_bed_frame/textures/old_bed_frame_arm_1k.jpg"
-dest_files=["res://.godot/imported/old_bed_frame_arm_1k.jpg-64cbbd67deb76b99d0f48c5e9543eeca.s3tc.ctex", "res://.godot/imported/old_bed_frame_arm_1k.jpg-64cbbd67deb76b99d0f48c5e9543eeca.etc2.ctex"]
+source_file="res://assets/room/models/rusted_hacksaw/textures/rusted_hacksaw_arm_1k.jpg"
+dest_files=["res://.godot/imported/rusted_hacksaw_arm_1k.jpg-ec30310e98d6adad9b67ae82c8298648.s3tc.ctex", "res://.godot/imported/rusted_hacksaw_arm_1k.jpg-ec30310e98d6adad9b67ae82c8298648.etc2.ctex"]
 
 [params]
 

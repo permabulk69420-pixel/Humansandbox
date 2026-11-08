@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cwd4my53ceend"
-path.s3tc="res://.godot/imported/old_bed_frame_nor_gl_1k.jpg-55e726b5ae536582d34e95ab7a5e8f7d.s3tc.ctex"
-path.etc2="res://.godot/imported/old_bed_frame_nor_gl_1k.jpg-55e726b5ae536582d34e95ab7a5e8f7d.etc2.ctex"
+uid="uid://c2rdtf7gyasg2"
+path.s3tc="res://.godot/imported/cross_pein_hammer_nor_gl_1k.jpg-197cb9793b514f947a982fc2a858622d.s3tc.ctex"
+path.etc2="res://.godot/imported/cross_pein_hammer_nor_gl_1k.jpg-197cb9793b514f947a982fc2a858622d.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/room/models/old_bed_frame/textures/old_bed_frame_nor_gl_1k.jpg"
-dest_files=["res://.godot/imported/old_bed_frame_nor_gl_1k.jpg-55e726b5ae536582d34e95ab7a5e8f7d.s3tc.ctex", "res://.godot/imported/old_bed_frame_nor_gl_1k.jpg-55e726b5ae536582d34e95ab7a5e8f7d.etc2.ctex"]
+source_file="res://assets/room/models/cross_pein_hammer/textures/cross_pein_hammer_nor_gl_1k.jpg"
+dest_files=["res://.godot/imported/cross_pein_hammer_nor_gl_1k.jpg-197cb9793b514f947a982fc2a858622d.s3tc.ctex", "res://.godot/imported/cross_pein_hammer_nor_gl_1k.jpg-197cb9793b514f947a982fc2a858622d.etc2.ctex"]
 
 [params]
 

@@ -15,13 +15,13 @@
   "nodes": [
     {
       "mesh": 0,
-      "name": "old_bed_frame"
+      "name": "rusted_hacksaw"
     }
   ],
   "materials": [
     {
       "doubleSided": true,
-      "name": "old_bed_frame",
+      "name": "rusted_hacksaw",
       "normalTexture": {
         "index": 0
       },
@@ -37,17 +37,15 @@
   ],
   "meshes": [
     {
-      "name": "Plane.037",
+      "name": "Cube.002",
       "primitives": [
         {
           "attributes": {
             "POSITION": 0,
             "NORMAL": 1,
-            "TEXCOORD_0": 2,
-            "COLOR_0": 3,
-            "COLOR_1": 4
+            "TEXCOORD_0": 2
           },
-          "indices": 5,
+          "indices": 3,
           "material": 0
         }
       ]
@@ -70,105 +68,79 @@
   "images": [
     {
       "mimeType": "image/jpeg",
-      "name": "old_bed_frame_nor_gl",
-      "uri": "textures/old_bed_frame_nor_gl_1k.jpg"
+      "name": "rusted_hacksaw_nor_gl",
+      "uri": "textures/rusted_hacksaw_nor_gl_1k.jpg"
     },
     {
       "mimeType": "image/jpeg",
-      "name": "old_bed_frame_diff",
-      "uri": "textures/old_bed_frame_diff_1k.jpg"
+      "name": "rusted_hacksaw_diff",
+      "uri": "textures/rusted_hacksaw_diff_1k.jpg"
     },
     {
       "mimeType": "image/jpeg",
-      "name": "old_bed_frame_metal-old_bed_frame_rough",
-      "uri": "textures/old_bed_frame_arm_1k.jpg"
+      "name": "rusted_hacksaw_metal-rusted_hacksaw_rough",
+      "uri": "textures/rusted_hacksaw_arm_1k.jpg"
     }
   ],
   "accessors": [
     {
       "bufferView": 0,
       "componentType": 5126,
-      "count": 35560,
+      "count": 5367,
       "max": [
-        0.4570513665676117,
-        1.2014838457107544,
-        1.0032745599746704
+        0.2532377243041992,
+        0.06691505014896393,
+        0.016412463039159775
       ],
       "min": [
-        -0.44760647416114807,
-        5.0353154534832356e-8,
-        -0.9984514713287354
+        -0.243133544921875,
+        -0.0424669049680233,
+        -0.016413450241088867
       ],
       "type": "VEC3"
     },
     {
       "bufferView": 1,
       "componentType": 5126,
-      "count": 35560,
+      "count": 5367,
       "type": "VEC3"
     },
     {
       "bufferView": 2,
       "componentType": 5126,
-      "count": 35560,
+      "count": 5367,
       "type": "VEC2"
     },
     {
       "bufferView": 3,
-      "componentType": 5121,
-      "count": 35560,
-      "normalized": true,
-      "type": "VEC4"
-    },
-    {
-      "bufferView": 4,
       "componentType": 5123,
-      "count": 35560,
-      "normalized": true,
-      "type": "VEC4"
-    },
-    {
-      "bufferView": 5,
-      "componentType": 5123,
-      "count": 149970,
+      "count": 19638,
       "type": "SCALAR"
     }
   ],
   "bufferViews": [
     {
       "buffer": 0,
-      "byteLength": 426720,
+      "byteLength": 64404,
       "byteOffset": 0,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 426720,
-      "byteOffset": 426720,
+      "byteLength": 64404,
+      "byteOffset": 64404,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 284480,
-      "byteOffset": 853440,
+      "byteLength": 42936,
+      "byteOffset": 128808,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 142240,
-      "byteOffset": 1137920,
-      "target": 34962
-    },
-    {
-      "buffer": 0,
-      "byteLength": 284480,
-      "byteOffset": 1280160,
-      "target": 34962
-    },
-    {
-      "buffer": 0,
-      "byteLength": 299940,
-      "byteOffset": 1564640,
+      "byteLength": 39276,
+      "byteOffset": 171744,
       "target": 34963
     }
   ],
@@ -180,8 +152,8 @@
   ],
   "buffers": [
     {
-      "byteLength": 1864580,
-      "uri": "old_bed_frame.bin"
+      "byteLength": 211020,
+      "uri": "rusted_hacksaw.bin"
     }
   ]
 }

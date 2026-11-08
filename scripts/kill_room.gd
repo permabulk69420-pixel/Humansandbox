@@ -98,6 +98,7 @@ func _ready() -> void:
 	_build_beams()
 	_build_pipes()
 	_build_table()
+	_build_table(Vector3(X0 + 0.5, 0.0, -5.2), "TableWest")      # a second one along the west wall
 	_build_rail()
 	_build_rail(X1 - 1.3, -3.4, 1.6)      # a second rail down the east side
 	_build_door()
@@ -473,11 +474,10 @@ func _build_pipes() -> void:
 	_static_box("PipesSouth", Vector3((X0 + X1) * 0.5, 2.65, Z1 - 0.15), Vector3(X1 - X0, 0.3, 0.3))
 
 
-func _build_table() -> void:
+func _build_table(c := TABLE_POS, label := "Table") -> void:
 	var steel := _batch("steel")
 	var top := _batch("tabletop")
 	var leather := _batch("leather")
-	var c := TABLE_POS
 	var len := 2.1
 	var wid := 0.9
 	var h := 0.92
@@ -495,7 +495,7 @@ func _build_table() -> void:
 	# leather straps across the table
 	for sz in [-0.62, -0.05, 0.55]:
 		_box(leather, c + Vector3(0, h + 0.043, sz), Vector3(wid + 0.06, 0.012, 0.07), _tile("leather"))
-	_static_box("Table", c + Vector3(0, TABLE_TOP * 0.5, 0), Vector3(wid, TABLE_TOP, len))     # solid up to the top surface, so things sit on it
+	_static_box(label, c + Vector3(0, TABLE_TOP * 0.5, 0), Vector3(wid, TABLE_TOP, len))     # solid up to the top surface, so things sit on it
 
 
 # An overhead rail with hooks hanging from it on chains.
@@ -680,9 +680,13 @@ func _build_props() -> void:
 	add_prop("wooden_crate_02", Vector3(X1 - 0.42, 0.47, -2.7), 4.0, false)
 	add_prop("trashbag", Vector3(X0 + 0.5, 0, Z1 - 0.4), 20.0)
 	add_prop("trashbag", Vector3(X0 + 1.05, 0, Z1 - 0.3), 75.0)
-	# the old bed along the west wall, and a metal rack against the south wall
-	add_prop("old_bed_frame", Vector3(X0 + 0.5, 0, -5.2), 0.0)
+	# a metal rack against the south wall
 	add_prop("worn_metal_rack", Vector3(1.7, 0, Z1 - 0.35), 180.0)
+	# a hammer and a hacksaw on the west table, between its straps (the flat tools are modelled standing up, so they are laid down)
+	var hammer := add_prop("cross_pein_hammer", Vector3(X0 + 0.5, TABLE_TOP + 0.012, -4.95), 0.0, false)
+	hammer.rotation_degrees = Vector3(-90.0, 25.0, 0.0)
+	var saw := add_prop("rusted_hacksaw", Vector3(X0 + 0.5, TABLE_TOP + 0.02, -5.55), 0.0, false)
+	saw.rotation_degrees = Vector3(-90.0, -15.0, 0.0)
 	add_prop("rubber_boots", Vector3(-0.5, 0, -7.35), 20.0, false)
 	add_prop("old_gas_mask", Vector3(X1 - 0.14, 1.8, -1.0), -90.0, false)       # hung on the east wall
 	# the radio on the shelves, facing into the room, shrunk 5% so its antenna clears the board above
