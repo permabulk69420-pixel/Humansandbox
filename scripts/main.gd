@@ -230,6 +230,9 @@ func _build_environment() -> void:
 	add_child(locker)
 	for node in locker.find_children("*", "Camera3D", true, false):
 		node.free()   # the model carries its own preview cameras; you are the camera here
+	var wrench := locker.find_child("*used pipe wrench", true, false)   # a prop nobody wants: the wrapper node, and the mesh inside it
+	if wrench != null:
+		wrench.free()
 	for node in locker.find_children("*", "Light3D", true, false):
 		node.shadow_enabled = false   # shadows from five lights are too much for the headset
 		node.light_energy *= LIGHT_ENERGY_SCALE
