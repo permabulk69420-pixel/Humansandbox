@@ -104,7 +104,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete quest-latest --yes --cleanup-tag || true
-          gh release create quest-latest build/humansandbox.apk \
-            --prerelease --target "$GITHUB_SHA" --title "Quest build ${GITHUB_RUN_NUMBER}" \
+          gh release delete quest-no-locker --yes --cleanup-tag || true
+          gh release create quest-no-locker build/humansandbox.apk \
+            --prerelease --target "$GITHUB_SHA" --title "TEST no locker ${GITHUB_RUN_NUMBER}" \
             --notes "Built from commit ${GITHUB_SHA:0:7} on ${GITHUB_REF_NAME}. humansandbox.apk is the one to install."

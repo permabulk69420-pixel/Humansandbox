@@ -14,8 +14,8 @@ const STICK_DEADZONE := 0.2
 const PERSONAL_SPACE := 0.45       # walking cannot take you closer than this to her
 const LOCKER := "res://exports/meat_locker/Meat_Locker_Industrial.glb"   # the room: the full-size industrial meat locker
 const LOCKER_SCALE := 0.75          # the model's props are about a third oversize next to a real person (a 1.1 m table, a 4.8 m ceiling)
-const ROOM_MIN := Vector2(-5.8, -9.2) * LOCKER_SCALE   # you cannot walk through the locker's walls (x, z, metres)
-const ROOM_MAX := Vector2(5.8, 9.0) * LOCKER_SCALE
+const ROOM_MIN := Vector2(-15.0, -15.0)   # TEST BUILD: no locker, the old open floor   # you cannot walk through the locker's walls (x, z, metres)
+const ROOM_MAX := Vector2(15.0, 15.0)
 const LIGHT_ENERGY_SCALE := 0.003   # the model's lights are written in physical units (hundreds), far too bright as Godot energies...
 const LIGHT_RANGE := 10.0 * LOCKER_SCALE           # ...and reach 4 km; give each a reach of about the room instead
 const EYE_HEIGHT := 1.62           # flat-screen camera height
@@ -254,31 +254,38 @@ static func _make_controller(tracker: StringName) -> XRController3D:
 # ---- the room ---------------------------------------------------------------------------------------------------------------------
 
 func _build_environment() -> void:
-	# the locker brings its own floor, walls and lights; around it is just darkness and a faint glow so nothing is pitch black
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color(0.30, 0.46, 0.68)
+	sky_material.sky_horizon_color = Color(0.72, 0.78, 0.84)
+	sky_material.ground_horizon_color = Color(0.45, 0.47, 0.50)
+	sky_material.ground_bottom_color = Color(0.22, 0.23, 0.25)
+	var sky := Sky.new()
+	sky.sky_material = sky_material
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.02, 0.02, 0.025)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.55, 0.62, 0.62)
-	env.ambient_light_energy = 0.35
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.75
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
-	var locker: Node3D = (load(LOCKER) as PackedScene).instantiate()
-	locker.name = "MeatLocker"
-	locker.scale = Vector3.ONE * LOCKER_SCALE   # about the floor origin, so the floor stays at y = 0
-	add_child(locker)
-	for node in locker.find_children("*", "Camera3D", true, false):
-		node.free()   # the model carries its own preview cameras; you are the camera here
-	var wrench := locker.find_child("*used pipe wrench", true, false)   # a prop nobody wants: the wrapper node, and the mesh inside it
-	if wrench != null:
-		wrench.free()
-	for node in locker.find_children("*", "Light3D", true, false):
-		node.shadow_enabled = false   # shadows from five lights are too much for the headset
-		node.light_energy *= LIGHT_ENERGY_SCALE
-		if node is OmniLight3D:
-			node.omni_range = LIGHT_RANGE
+	var sun := DirectionalLight3D.new()
+	sun.light_energy = 0.9
+	sun.rotation_degrees = Vector3(-50.0, -25.0, 0.0)
+	sun.shadow_enabled = false
+	add_child(sun)
+
+	var floor_material := StandardMaterial3D.new()
+	floor_material.albedo_color = Color(0.30, 0.31, 0.33)
+	floor_material.roughness = 1.0
+	var floor_mesh := PlaneMesh.new()
+	floor_mesh.size = Vector2(40.0, 40.0)
+	floor_mesh.material = floor_material
+	var floor_node := MeshInstance3D.new()
+	floor_node.mesh = floor_mesh
+	floor_node.name = "Floor"
+	add_child(floor_node)
 
 
 # A dull thud for a punch landing, made in code: a falling low tone with a burst of noise on the front.
