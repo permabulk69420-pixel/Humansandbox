@@ -4,7 +4,6 @@
 extends Node3D
 
 const REFRESH_RATE := 90.0
-const RENDER_SCALE := 1.5          # headset render resolution as a multiple of the Quest's recommended size, per eye
 const WOMAN_DISTANCE := 0.8        # metres in front of you; she faces +Z, so by default she faces the play-space centre
 const SETTLE_FRAMES := 30          # let headset tracking settle before reading where you are looking
 const GIVE_UP_FRAMES := 270        # ...but never wait longer than this (a few seconds) for a sensible head height
@@ -195,7 +194,6 @@ func _start_xr() -> bool:
 	if not xr.is_initialized() and not xr.initialize():
 		return false
 	get_viewport().use_xr = true
-	xr.set("render_target_size_multiplier", RENDER_SCALE)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)   # the headset sets the pace
 	if xr.has_method("get_available_display_refresh_rates"):
 		var rates = xr.call("get_available_display_refresh_rates")
