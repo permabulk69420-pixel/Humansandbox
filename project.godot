@@ -38,3 +38,13 @@ openxr/foveation_level=3
 openxr/foveation_dynamic=false
 openxr/extensions/meta/application_space_warp=true
 shaders/enabled=true
+
+[importer_defaults]
+
+texture={
+"compress/mode": 2,
+"mipmaps/generate": true
+}
+scene={
+"meshes/generate_lods": false
+}

@@ -13,12 +13,11 @@ const MOVE_SPEED := 1.6            # m/s walking with the left stick (or WASD)
 const TURN_SPEED := deg_to_rad(110.0)   # rad/s turning with the right stick (or Q/E, the arrow keys)
 const STICK_DEADZONE := 0.2
 const PERSONAL_SPACE := 0.45       # walking cannot take you closer than this to her
-const LOCKER := "res://exports/meat_locker/Meat_Locker_Industrial.glb"   # the room: the full-size industrial meat locker
-const LOCKER_SCALE := 0.75          # the model's props are about a third oversize next to a real person (a 1.1 m table, a 4.8 m ceiling)
-const ROOM_MIN := Vector2(-5.8, -9.2) * LOCKER_SCALE   # you cannot walk through the locker's walls (x, z, metres)
-const ROOM_MAX := Vector2(5.8, 9.0) * LOCKER_SCALE
-const LIGHT_ENERGY_SCALE := 0.003   # the model's lights are written in physical units (hundreds), far too bright as Godot energies...
-const LIGHT_RANGE := 10.0 * LOCKER_SCALE           # ...and reach 4 km; give each a reach of about the room instead
+const ROOM_MIN := Vector2(KillRoom.X0 + 0.3, KillRoom.Z0 + 0.3)   # the walls, as a backstop in case the collision ever lets you through (x, z)
+const ROOM_MAX := Vector2(KillRoom.X1 - 0.3, KillRoom.Z1 - 0.3)
+const BODY_RADIUS := 0.28          # your body, for bumping into the room and its props
+const BODY_HEIGHT := 1.6
+const BODY_LIFT := 0.15            # it floats this far off the floor, so low things (the drain cover, a threshold) do not stop you
 const EYE_HEIGHT := 1.62           # flat-screen camera height
 
 var vr := false
@@ -28,6 +27,8 @@ var left_controller: XRController3D
 var right_controller: XRController3D
 var hands: VrHands
 var woman: Woman
+var room: KillRoom
+var body: CharacterBody3D
 var detector := PunchDetector.new()
 var thud: AudioStreamPlayer3D
 var flat_hit_hand := "right"
@@ -46,6 +47,7 @@ func _ready() -> void:
 	woman.position = Vector3(0.0, 0.0, -WOMAN_DISTANCE)
 	woman.visible = not vr   # in a headset she appears once you have been placed, not somewhere you were not looking
 	add_child(woman)
+	KillRoom.apply_anisotropic(woman)
 
 	if vr:
 		rig = XROrigin3D.new()
@@ -71,6 +73,8 @@ func _ready() -> void:
 
 	if vr:
 		hands = VrHands.new({"left": left_controller, "right": right_controller})
+		KillRoom.apply_anisotropic(left_controller)    # the hand models hang off the controllers
+		KillRoom.apply_anisotropic(right_controller)
 		detector.add_hand("left", left_controller)
 		detector.add_hand("right", right_controller)
 	detector.punched.connect(_on_punched)
@@ -169,7 +173,7 @@ func locomote(move: Vector2, turn: float, dt: float) -> void:
 		var right := camera.global_basis.x
 		right.y = 0.0
 		var heading := (forward.normalized() * move.y + right.normalized() * move.x) if forward.length() > 0.01 else Vector3.ZERO
-		rig.global_position += heading * MOVE_SPEED * dt
+		rig.global_position += _slide(heading * MOVE_SPEED * dt)
 		# you cannot walk through her, or through the walls
 		var away := Vector2(camera.global_position.x - woman.global_position.x, camera.global_position.z - woman.global_position.z)
 		if away.length() < PERSONAL_SPACE:
@@ -177,6 +181,21 @@ func locomote(move: Vector2, turn: float, dt: float) -> void:
 			rig.global_position += Vector3(push.x, 0.0, push.y)
 		rig.global_position.x = clampf(rig.global_position.x, ROOM_MIN.x, ROOM_MAX.x)
 		rig.global_position.z = clampf(rig.global_position.z, ROOM_MIN.y, ROOM_MAX.y)
+
+
+# Moves your body through the room's collision and returns how far it really got, sliding along walls and props instead of sticking.
+func _slide(motion: Vector3) -> Vector3:
+	body.global_position = Vector3(camera.global_position.x, rig.global_position.y + BODY_LIFT + BODY_HEIGHT * 0.5, camera.global_position.z)
+	var start := body.global_position
+	for i in 3:
+		var hit := body.move_and_collide(motion)
+		if hit == null:
+			break
+		motion = hit.get_remainder().slide(hit.get_normal())
+		motion.y = 0.0
+		if motion.length() < 0.0005:
+			break
+	return body.global_position - start
 
 
 static func placement(camera_position: Vector3, camera_forward: Vector3, floor_y: float, distance: float) -> Transform3D:
@@ -272,34 +291,22 @@ static func _make_controller(tracker: StringName) -> XRController3D:
 # ---- the room ---------------------------------------------------------------------------------------------------------------------
 
 func _build_environment() -> void:
-	# the locker brings its own floor, walls and lights; around it is just darkness and a faint glow so nothing is pitch black
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.02, 0.02, 0.025)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.55, 0.62, 0.62)
-	env.ambient_light_energy = 0.35
-	var world_env := WorldEnvironment.new()
-	world_env.environment = env
-	add_child(world_env)
-
-	var locker: Node3D = (load(LOCKER) as PackedScene).instantiate()
-	locker.name = "MeatLocker"
-	locker.scale = Vector3.ONE * LOCKER_SCALE   # about the floor origin, so the floor stays at y = 0
-	add_child(locker)
-	for node in locker.find_children("*", "Camera3D", true, false):
-		node.free()   # the model carries its own preview cameras; you are the camera here
-	var wrench := locker.find_child("*used pipe wrench", true, false)   # a prop nobody wants: the wrapper node, and the mesh inside it
-	if wrench != null:
-		wrench.free()
-	var rear_lights := locker.find_child("*rear caged service light", true, false)   # loose light fixture, not attached to anything
-	if rear_lights != null:
-		rear_lights.free()
-	for node in locker.find_children("*", "Light3D", true, false):
-		node.shadow_enabled = false   # shadows from five lights are too much for the headset
-		node.light_energy *= LIGHT_ENERGY_SCALE
-		if node is OmniLight3D:
-			node.omni_range = LIGHT_RANGE
+	room = KillRoom.new()
+	room.name = "Room"
+	add_child(room)
+	# your body: a capsule that only looks at the room's solid things (layer 1) and is moved by hand in _slide()
+	body = CharacterBody3D.new()
+	body.name = "Body"
+	body.collision_layer = 0
+	body.collision_mask = 1
+	body.motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = BODY_RADIUS
+	capsule.height = BODY_HEIGHT
+	var shape := CollisionShape3D.new()
+	shape.shape = capsule
+	body.add_child(shape)
+	add_child(body)
 
 
 # A dull thud for a punch landing, made in code: a falling low tone with a burst of noise on the front.
