@@ -641,7 +641,7 @@ func _build_props() -> void:
 	add_prop("metal_stool_01", Vector3(-0.95, 0, -4.1), 15.0)
 	add_prop("wooden_bucket_01", Vector3(1.6, 0, -3.9), 0.0)
 	# the south and east walls
-	add_prop("metal_tool_chest", Vector3(X1 - 0.4, 0, -1.2), 90.0)
+	add_prop("metal_tool_chest", Vector3(X1 - 0.4, 0, -1.2), -90.0)
 	add_prop("Barrel_01", Vector3(X1 - 0.5, 0, 2.3), 0.0)
 	add_prop("Barrel_02", Vector3(X1 - 1.25, 0, 2.5), 40.0)
 	add_prop("wooden_crate_01", Vector3(-1.4, 0, Z1 - 0.5), 10.0)
