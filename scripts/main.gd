@@ -4,7 +4,6 @@
 extends Node3D
 
 const REFRESH_RATE := 90.0
-const RENDER_SCALE := 1.5          # headset render resolution as a multiple of the Quest's recommended size, per eye
 const WOMAN_DISTANCE := 0.8        # metres in front of you; she faces +Z, so by default she faces the play-space centre
 const SETTLE_FRAMES := 30          # let headset tracking settle before reading where you are looking
 const GIVE_UP_FRAMES := 270        # ...but never wait longer than this (a few seconds) for a sensible head height
@@ -12,12 +11,7 @@ const MOVE_SPEED := 1.6            # m/s walking with the left stick (or WASD)
 const TURN_SPEED := deg_to_rad(110.0)   # rad/s turning with the right stick (or Q/E, the arrow keys)
 const STICK_DEADZONE := 0.2
 const PERSONAL_SPACE := 0.45       # walking cannot take you closer than this to her
-const LOCKER := "res://exports/meat_locker/Meat_Locker_Industrial.glb"   # the room: the full-size industrial meat locker
-const LOCKER_SCALE := 0.75          # the model's props are about a third oversize next to a real person (a 1.1 m table, a 4.8 m ceiling)
-const ROOM_MIN := Vector2(-15.0, -15.0)   # TEST BUILD: no locker, the old open floor   # you cannot walk through the locker's walls (x, z, metres)
-const ROOM_MAX := Vector2(15.0, 15.0)
-const LIGHT_ENERGY_SCALE := 0.003   # the model's lights are written in physical units (hundreds), far too bright as Godot energies...
-const LIGHT_RANGE := 10.0 * LOCKER_SCALE           # ...and reach 4 km; give each a reach of about the room instead
+const ARENA := 15.0                # and you cannot walk off the edge of the floor
 const EYE_HEIGHT := 1.62           # flat-screen camera height
 
 var vr := false
@@ -32,8 +26,6 @@ var thud: AudioStreamPlayer3D
 var flat_hit_hand := "right"
 var settle_frames := 0
 var placed := false
-var resolution_label: Label3D
-var resolution_timer := 0.0
 
 
 func _ready() -> void:
@@ -64,8 +56,6 @@ func _ready() -> void:
 	camera.near = 0.05
 	camera.current = true
 	rig.add_child(camera)
-	resolution_label = _make_resolution_label()
-	camera.add_child(resolution_label)
 	woman.target = camera
 
 	if vr:
@@ -90,10 +80,6 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var dt := minf(delta, 0.05)
-	resolution_timer -= delta
-	if resolution_timer <= 0.0:
-		resolution_timer = 0.5
-		resolution_label.text = _resolution_text()
 	if vr and not placed:
 		# the play space's "forward" is wherever you faced when you last recentred, not necessarily where you are looking now:
 		# stand her where you are looking once tracking has settled
@@ -157,13 +143,13 @@ func locomote(move: Vector2, turn: float, dt: float) -> void:
 		right.y = 0.0
 		var heading := (forward.normalized() * move.y + right.normalized() * move.x) if forward.length() > 0.01 else Vector3.ZERO
 		rig.global_position += heading * MOVE_SPEED * dt
-		# you cannot walk through her, or through the walls
+		# you cannot walk through her, or off the floor
 		var away := Vector2(camera.global_position.x - woman.global_position.x, camera.global_position.z - woman.global_position.z)
 		if away.length() < PERSONAL_SPACE:
 			var push := (away.normalized() if away.length() > 0.001 else Vector2.DOWN) * (PERSONAL_SPACE - away.length())
 			rig.global_position += Vector3(push.x, 0.0, push.y)
-		rig.global_position.x = clampf(rig.global_position.x, ROOM_MIN.x, ROOM_MAX.x)
-		rig.global_position.z = clampf(rig.global_position.z, ROOM_MIN.y, ROOM_MAX.y)
+		rig.global_position.x = clampf(rig.global_position.x, -ARENA, ARENA)
+		rig.global_position.z = clampf(rig.global_position.z, -ARENA, ARENA)
 
 
 static func placement(camera_position: Vector3, camera_forward: Vector3, floor_y: float, distance: float) -> Transform3D:
@@ -195,37 +181,6 @@ func _on_punched(hand_name: String, point: Vector3, velocity: Vector3, strength:
 
 # ---- headset ----------------------------------------------------------------------------------------------------------------------
 
-# A small panel low in your view showing what the headset is actually rendering at.
-static func _make_resolution_label() -> Label3D:
-	var label := Label3D.new()
-	label.name = "ResolutionOverlay"
-	label.position = Vector3(0.0, -0.22, -0.7)
-	label.pixel_size = 0.0006
-	label.font_size = 32
-	label.outline_size = 8
-	label.no_depth_test = true
-	label.render_priority = 10
-	label.modulate = Color(1.0, 1.0, 0.6)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	return label
-
-
-func _resolution_text() -> String:
-	var lines: PackedStringArray = []
-	var viewport := get_viewport()
-	var xr := XRServer.find_interface("OpenXR")
-	if vr and xr != null and xr.is_initialized():
-		var eye := xr.get_render_target_size()
-		lines.append("Eye buffer: %d x %d per eye" % [eye.x, eye.y])
-		lines.append("Multiplier: x%.2f" % float(xr.get("render_target_size_multiplier")))
-		lines.append("Foveation: %d%s" % [int(xr.get("foveation_level")), " dynamic" if xr.get("foveation_dynamic") else ""])
-		lines.append("Refresh: %.0f Hz" % float(xr.get("display_refresh_rate")))
-	lines.append("3D scale: %.2f   MSAA: %s" % [viewport.scaling_3d_scale, ["off", "2x", "4x", "8x"][viewport.msaa_3d]])
-	lines.append("Renderer: %s" % RenderingServer.get_current_rendering_method())
-	lines.append("FPS: %d" % Engine.get_frames_per_second())
-	return "\n".join(lines)
-
-
 # Starts OpenXR if there is a headset to talk to. Returns false (and plays on a flat screen) if there is not.
 func _start_xr() -> bool:
 	var xr := XRServer.find_interface("OpenXR")
@@ -234,7 +189,6 @@ func _start_xr() -> bool:
 	if not xr.is_initialized() and not xr.initialize():
 		return false
 	get_viewport().use_xr = true
-	xr.set("render_target_size_multiplier", RENDER_SCALE)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)   # the headset sets the pace
 	if xr.has_method("get_available_display_refresh_rates"):
 		var rates = xr.call("get_available_display_refresh_rates")
