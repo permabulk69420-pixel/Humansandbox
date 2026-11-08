@@ -30,6 +30,7 @@ const MODEL := "res://assets/room/models/%s/%s.gltf"
 const LAMP_POS := Vector3(0.2, H, -2.6)
 const TABLE_POS := Vector3(0.2, 0.0, -3.5)
 const TABLE_TOP := 0.957             # the table's top surface, for collision and for things set down on it
+const KNIFE_SHELF_TOP := 0.64
 const SHELF_BOARD := 1.145           # the board of the steel shelves the radio sits on (the boards are at 0.135, 0.64, 1.145, 1.65 m)
 const LAMP_SCALE := 0.8             # the Poly Haven lamp comes with a 1.3 m chain: shortened so the shade hangs above head height
 const LAMP_ENERGY := 3.2
@@ -637,7 +638,7 @@ func _build_lights() -> void:
 func _build_props() -> void:
 	add_prop("steel_frame_shelves_01", Vector3(X1 - 0.3, 0, -5.4), -90.0, false, true, 2.14)
 	# the shelves are solid boards you can stand things on (not one box): 0.5 m deep, 1.1 m wide
-	for top in [0.135, 0.64, SHELF_BOARD, 1.65]:
+	for top in [0.135, KNIFE_SHELF_TOP, SHELF_BOARD, 1.65]:
 		_static_box("ShelfBoard%d" % int(top * 1000.0), Vector3(X1 - 0.3, top - 0.015, -5.4), Vector3(0.5, 0.03, 1.1))
 	add_prop("industrial_storage_cart", Vector3(X0 + 0.7, 0, -1.2), 90.0, true, true, 0.95)
 	add_prop("BarberShopChair_01", Vector3(-2.6, 0, -3.6), 90.0)
@@ -664,10 +665,10 @@ func _build_props() -> void:
 	torch.position = Vector3(X1 - 0.38, SHELF_BOARD + 0.006, -5.7)
 	torch.rotation_degrees.y = 90.0
 	props.add_child(torch)
-	# Rest flat on the steel table: the supplied mesh is only 32 cm long, already in metres.
+	# Rest flat on the clear lower shelf, below the radio and blowtorch.
 	knife = KitchenKnife.new()
 	knife.name = "KitchenKnife"
-	knife.position = TABLE_POS + Vector3(0.33, TABLE_TOP + 0.012, 0.36)
+	knife.position = Vector3(X1 - 0.38, KNIFE_SHELF_TOP + 0.012, -5.55)
 	knife.rotation = Vector3(0.0, 0.2, PI / 2.0)
 	props.add_child(knife)
 
