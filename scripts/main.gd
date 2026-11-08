@@ -12,10 +12,11 @@ const TURN_SPEED := deg_to_rad(110.0)   # rad/s turning with the right stick (or
 const STICK_DEADZONE := 0.2
 const PERSONAL_SPACE := 0.45       # walking cannot take you closer than this to her
 const LOCKER := "res://exports/meat_locker/Meat_Locker_Industrial.glb"   # the room: the full-size industrial meat locker
-const ROOM_MIN := Vector2(-5.8, -9.2)   # you cannot walk through the locker's walls (x, z, metres)
-const ROOM_MAX := Vector2(5.8, 9.0)
+const LOCKER_SCALE := 0.75          # the model's props are about a third oversize next to a real person (a 1.1 m table, a 4.8 m ceiling)
+const ROOM_MIN := Vector2(-5.8, -9.2) * LOCKER_SCALE   # you cannot walk through the locker's walls (x, z, metres)
+const ROOM_MAX := Vector2(5.8, 9.0) * LOCKER_SCALE
 const LIGHT_ENERGY_SCALE := 0.003   # the model's lights are written in physical units (hundreds), far too bright as Godot energies...
-const LIGHT_RANGE := 10.0           # ...and reach 4 km; give each a reach of about the room instead
+const LIGHT_RANGE := 10.0 * LOCKER_SCALE           # ...and reach 4 km; give each a reach of about the room instead
 const EYE_HEIGHT := 1.62           # flat-screen camera height
 
 var vr := false
@@ -225,6 +226,7 @@ func _build_environment() -> void:
 
 	var locker: Node3D = (load(LOCKER) as PackedScene).instantiate()
 	locker.name = "MeatLocker"
+	locker.scale = Vector3.ONE * LOCKER_SCALE   # about the floor origin, so the floor stays at y = 0
 	add_child(locker)
 	for node in locker.find_children("*", "Camera3D", true, false):
 		node.free()   # the model carries its own preview cameras; you are the camera here
