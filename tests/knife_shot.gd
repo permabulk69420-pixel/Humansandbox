@@ -1,4 +1,4 @@
-# In-game screenshots of the table prop and both fitted grips.
+# In-game screenshots of the shelf prop and both fitted grips.
 # godot --xr-mode off --audio-driver Dummy --path . -s res://tests/knife_shot.gd -- /tmp
 extends SceneTree
 var out_dir := "/tmp"
@@ -28,9 +28,9 @@ func run() -> void:
 	# First show the supplied knife resting in the actual game room.
 	for i in 60:
 		await physics_frame
-	camera.position = Vector3(1.05, 1.48, -2.50)
+	camera.position = Vector3(2.85, 1.05, -4.90)
 	camera.look_at(room.knife.global_position + Vector3(0, 0, -.07))
-	await snap("knife_on_table")
+	await snap("knife_on_shelf")
 	var collision := room.knife.get_child(1) as CollisionShape3D
 	var lowest := 100.0
 	for p in (collision.shape as ConvexPolygonShape3D).points:

@@ -86,13 +86,13 @@ func run() -> void:
 	left.tracked = false
 	interactions.update(0.1)
 	check(knife.held_by == "" and not knife.freeze, "tracking loss releases held knife")
-	# Exercise the actual game wiring, including a stable physical resting position on its table.
+	# Exercise the actual game wiring, including a stable physical resting position on its shelf.
 	var room := KillRoom.new()
 	root.add_child(room)
 	check(room.knife is KitchenKnife and room.props.is_ancestor_of(room.knife), "the game room spawns the knife as a live physics prop")
 	for i in 90:
 		await physics_frame
-	check(room.knife.global_position.y > KillRoom.TABLE_TOP and room.knife.global_position.y < KillRoom.TABLE_TOP + 0.05, "knife rests on table without falling through it (y=%.4f)" % room.knife.global_position.y)
+	check(room.knife.global_position.y > KillRoom.KNIFE_SHELF_TOP and room.knife.global_position.y < KillRoom.KNIFE_SHELF_TOP + 0.05, "knife rests on shelf without falling through it (y=%.4f)" % room.knife.global_position.y)
 	var args := OS.get_cmdline_user_args()
 	if not args.is_empty():
 		var f := FileAccess.open(args[0], FileAccess.WRITE)
