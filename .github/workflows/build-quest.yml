@@ -1,7 +1,6 @@
 # Builds the Quest app (an APK you can install on the headset) on GitHub, so no PC is needed.
 # Runs on every push to main or the working branch, or by hand from the Actions tab ("Run workflow").
-# The finished APK is attached to the "quest-latest" release, shown as the repo's Latest release (the newest build always replaces it),
-# and to the run itself.
+# The finished APKs are attached to the "quest-latest" release (the newest build always replaces it) and to the run itself.
 #
 # tools/debug.keystore is an ordinary debug-style signing key, committed on purpose: with the same key every build can be
 # installed over the last one. It is fine for sideloading to your own headset; a store release would need a private key.
@@ -49,24 +48,11 @@ jobs:
 
       - name: Godot and its Android export templates
         run: |
-          # Use Godot's official download service first. The GitHub release CDN has
-          # repeatedly returned HTTP 504 to GitHub-hosted runners.
           base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
-          godot_mirror="https://downloads.godotengine.org/?version=${GODOT_VERSION}&flavor=stable&platform=linux.64&slug=linux.x86_64.zip"
-          templates_mirror="https://downloads.godotengine.org/?version=${GODOT_VERSION}&flavor=stable&platform=templates&slug=export_templates.tpz"
-          fetch_with_fallback() {
-            local output="$1" primary="$2" fallback="$3"
-            if ! curl -fL --retry 4 --retry-delay 5 --retry-all-errors --connect-timeout 25 -o "$output" "$primary"; then
-              echo "::warning::Official Godot mirror failed; trying GitHub release asset"
-              curl -fL --retry 4 --retry-delay 5 --retry-all-errors --connect-timeout 25 -o "$output" "$fallback"
-            fi
-          }
-          fetch_with_fallback "$RUNNER_TEMP/godot.zip" "$godot_mirror" "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          unzip -tq "$RUNNER_TEMP/godot.zip" > /dev/null
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/godot.zip" "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
           unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP"
           sudo mv "$RUNNER_TEMP/Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
-          fetch_with_fallback "$RUNNER_TEMP/templates.tpz" "$templates_mirror" "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
-          unzip -tq "$RUNNER_TEMP/templates.tpz" > /dev/null
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/templates.tpz" "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
           unzip -q -j "$RUNNER_TEMP/templates.tpz" 'templates/android_*' templates/version.txt -d ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
           mkdir -p ~/.config/godot
@@ -87,7 +73,7 @@ jobs:
       - name: OpenXR Vendors plugin (the Meta Quest loader)
         run: |
           # unpacked outside the project: a second copy inside it would make Godot load the plugin twice
-          curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o "$RUNNER_TEMP/vendors.zip" "https://github.com/GodotVR/godot_openxr_vendors/releases/download/${VENDORS_VERSION}/godotopenxrvendorsaddon.zip"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/vendors.zip" "https://github.com/GodotVR/godot_openxr_vendors/releases/download/${VENDORS_VERSION}/godotopenxrvendorsaddon.zip"
           unzip -q "$RUNNER_TEMP/vendors.zip" 'asset/addons/godotopenxrvendors/*' -d "$RUNNER_TEMP/vendors"
           mkdir -p addons
           cp -r "$RUNNER_TEMP/vendors/asset/addons/godotopenxrvendors" addons/
@@ -120,5 +106,5 @@ jobs:
         run: |
           gh release delete quest-latest --yes --cleanup-tag || true
           gh release create quest-latest build/humansandbox.apk \
-            --latest --target "$GITHUB_SHA" --title "Quest build ${GITHUB_RUN_NUMBER}" \
+            --prerelease --target "$GITHUB_SHA" --title "Quest build ${GITHUB_RUN_NUMBER}" \
             --notes "Built from commit ${GITHUB_SHA:0:7} on ${GITHUB_REF_NAME}. humansandbox.apk is the one to install."
