@@ -14,6 +14,7 @@ const REACH := 0.025          # a graze this far outside the head still lands
 const SMOOTHING := 0.5        # how much of each new speed reading is believed
 
 var hands := {}               # name -> { node, last, velocity, cooldown }
+var reference: Node3D         # the play space (XROrigin3D). Hands are measured relative to it, so walking or turning is not a punch.
 
 
 func add_hand(hand_name: String, node: Node3D) -> void:
@@ -22,6 +23,14 @@ func add_hand(hand_name: String, node: Node3D) -> void:
 
 static func knuckle_point(node: Node3D) -> Vector3:
 	return node.global_position - node.global_transform.basis.z * KNUCKLES
+
+
+func _to_play_space(point: Vector3) -> Vector3:
+	return reference.global_transform.affine_inverse() * point if reference != null else point
+
+
+func _from_play_space(point: Vector3) -> Vector3:
+	return reference.global_transform * point if reference != null else point
 
 
 func speed_of(hand_name: String) -> float:
@@ -35,13 +44,15 @@ func update(dt: float, woman: Woman) -> void:
 	for hand_name in hands:
 		var h: Dictionary = hands[hand_name]
 		var point := knuckle_point(h.node)
+		var local := _to_play_space(point)
 		h.cooldown = maxf(0.0, h.cooldown - dt)
 		if h.last == null:
-			h.last = point
+			h.last = local
 			continue
-		var last: Vector3 = h.last
+		var last_local: Vector3 = h.last
+		var last := _from_play_space(last_local)          # where the hand was, in the play space as it is now
 		h.velocity = h.velocity.lerp((point - last) / dt, SMOOTHING)
-		h.last = point
+		h.last = local
 		if h.cooldown > 0.0:
 			continue
 		var velocity: Vector3 = h.velocity

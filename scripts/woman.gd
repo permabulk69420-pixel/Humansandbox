@@ -1,11 +1,13 @@
 # The woman: the rigged human in assets/woman/woman.glb (rigged by tools/rig_woman.py). She stands where she is put, faces +Z, and
 #   * watches whoever `target` is: the head and neck turn towards it within human limits, and each eye aims at it on its own
-#   * breathes, sways a little, and lets her arms hang relaxed instead of held out in the modelling A-pose
+#   * plays baked mocap clips for her base motion (idle, walk; tools/bake_clips.gd retargets them from a CC0 library onto her skeleton)
+#   * walks: she turns her body to face the player when they move round her, can walk to a point (walk_to) or wander about her spot
 #   * takes a punch: hit() turns the fist's speed and where it landed into a spin on her head, which a spring carries through
 #     the spine, neck and head and then settles; she loses track of the player for a moment and then finds them again.
 #
 # Every bone is posed by writing its rotation directly (nothing is left to an AnimationPlayer). A bone is turned by a rotation in
-# model space about its own joint; a child inherits its parents' turns, so the offsets just stack from the hips up.
+# model space about its own joint; a child inherits its parents' turns, so the offsets just stack from the hips up. The clip sets each
+# bone's offset first and the looking and the punch reaction are stacked on top of it.
 class_name Woman
 extends Node3D
 
@@ -34,8 +36,17 @@ const SPRING_HZ := 1.6
 const SPRING_DAMPING := 0.30                          # < 1: it overshoots a little before it settles
 const ATTENTION_RETURN := 2.5                         # per second, once she has recovered
 
-# Relaxed posture: the model is built with the arms held out; hang them nearer her sides.
-const ARM_DROP := deg_to_rad(14.0)
+# Clips and walking
+const CLIPS := "res://assets/woman/clips.json"
+const FADE_TIME := 0.25                               # seconds to blend from one clip to the next
+const TURN_STEP_RATE := 0.8                           # playback rate of the walk when she is only turning on the spot
+const TURN_RATE := deg_to_rad(130.0)                  # the fastest she turns her body
+const TURN_ACCEL := deg_to_rad(500.0)
+const WALK_ACCEL := 1.2
+const FACE_AFTER := deg_to_rad(50.0)                  # she turns her body once the player is further than this off her front...
+const FACE_DONE := deg_to_rad(8.0)                    # ...and stops when they are this close to it
+const WANDER_RADIUS := 1.2
+const KEEP_AWAY := 0.9                                # wandering never takes her this close to the player
 
 var target: Node3D                 # who she watches (the player's camera)
 var skeleton: Skeleton3D
@@ -60,6 +71,27 @@ var saccade := Vector2.ZERO        # a small random flick of the eyes (yaw, pitc
 var saccade_timer := 1.0
 var rng := RandomNumberGenerator.new()
 
+var clips := {}                    # clip name -> baked frames (see _load_clips)
+var clip_bones: Array[int] = []    # the bones the clips animate, in the order the baked frames list them
+var clip_name := "Idle_Loop"
+var clip_time := 0.0
+var clip_rate := 1.0
+var fade_name := ""                # the clip we are blending away from
+var fade_time := 0.0
+var fade_rate := 1.0
+var fade := 1.0                    # 1 = all on the current clip
+var walk_speed := 0.8              # m/s her feet cover the ground at in the walk clip, at normal playback
+
+var body_turns := true              # turn the whole body to face the player when they move round to her side
+var wander := false                # stroll about `home` when nothing else is going on
+var home := Vector3.ZERO           # the spot she wanders round
+var move_target = null             # a world point she is walking to (Vector3), or null
+var speed := 0.0                   # m/s along her facing
+var turn_velocity := 0.0           # rad/s of the body turning
+var turning_to_face := false
+var pause_timer := 3.0             # seconds before she sets off somewhere
+var rest_local_origin: Array[Vector3] = []
+
 
 func _ready() -> void:
 	rng.seed = 7
@@ -75,9 +107,12 @@ func _ready() -> void:
 		rest_q.append(skeleton.get_bone_rest(i).basis.get_rotation_quaternion())
 		rest_gq.append(g.basis.get_rotation_quaternion())
 		rest_origin.append(g.origin)
+		rest_local_origin.append(skeleton.get_bone_rest(i).origin)
 		parents.append(skeleton.get_bone_parent(i))
 		assert(parents[i] < i, "bones must be listed parent first")
 	head_center_local = skeleton.get_bone_global_rest(bone["Head"]).affine_inverse() * HEAD_CENTER_REST
+	home = global_position
+	_load_clips()
 	# The hair, brows and lashes stay put when she turns her head only because they are skinned; keep them from being culled.
 	for m: MeshInstance3D in skeleton.find_children("*", "MeshInstance3D", false, false):
 		m.extra_cull_margin = 1.0
@@ -111,8 +146,16 @@ func hit(point: Vector3, velocity: Vector3, strength: float = 1.0) -> void:
 		spin = spin.normalized() * MAX_SPIN
 	hit_velocity += spin
 	stun = 0.55 + 0.45 * clampf(strength, 0.0, 1.0)
+	move_target = null                              # a punch stops her in her tracks
+	pause_timer = maxf(pause_timer, 1.5 + strength)
 	hits += 1
 	hit_taken.emit(point, strength)
+
+
+# Walk to a point (world space). She turns to it first, then sets off.
+func walk_to(point: Vector3) -> void:
+	move_target = point
+	pause_timer = 0.0
 
 
 func head_center() -> Vector3:
@@ -147,17 +190,19 @@ func update(dt: float) -> void:
 	time += dt
 	_update_attention(dt)
 	_update_reaction(dt)
+	_update_movement(dt)
+	_update_clip(dt)
 
 	var offsets: Array[Quaternion] = []
 	offsets.resize(skeleton.get_bone_count())
 	offsets.fill(Quaternion.IDENTITY)
-	_add_posture(offsets)
-	_add_breathing(offsets)
+	var hips_move := _add_clip(offsets)
 	_add_look(offsets, dt)
 	_add_reaction(offsets)
 
 	for i in offsets.size():
 		_pose_bone(i, offsets[i])
+	skeleton.set_bone_pose_position(bone["Hips"], rest_local_origin[bone["Hips"]] + hips_move)
 	_aim_eyes(offsets, dt)
 
 
@@ -203,21 +248,6 @@ func _update_reaction(dt: float) -> void:
 		hit_velocity = Vector3.ZERO
 
 
-func _add_posture(offsets: Array[Quaternion]) -> void:
-	_stack(offsets, "LeftUpperArm", Quaternion(Vector3.BACK, -ARM_DROP))
-	_stack(offsets, "RightUpperArm", Quaternion(Vector3.BACK, ARM_DROP))
-
-
-func _add_breathing(offsets: Array[Quaternion]) -> void:
-	var breath := sin(time * TAU / 4.2)
-	_stack(offsets, "Chest", Quaternion(Vector3.RIGHT, -0.008 * breath))
-	_stack(offsets, "UpperChest", Quaternion(Vector3.RIGHT, -0.010 * breath))
-	_stack(offsets, "LeftShoulder", Quaternion(Vector3.BACK, 0.010 * breath))
-	_stack(offsets, "RightShoulder", Quaternion(Vector3.BACK, -0.010 * breath))
-	# A weight shift now and then, so she is not carved from one block.
-	_stack(offsets, "Spine", Quaternion(Vector3.UP, 0.018 * sin(time * 0.37)) * Quaternion(Vector3.BACK, 0.012 * sin(time * 0.29 + 1.0)))
-
-
 func _add_look(offsets: Array[Quaternion], dt: float) -> void:
 	var yaw := 0.0
 	var pitch := 0.0
@@ -232,14 +262,193 @@ func _add_look(offsets: Array[Quaternion], dt: float) -> void:
 	look_yaw += (yaw * look_weight - look_yaw) * follow
 	look_pitch += (pitch * look_weight - look_pitch) * follow
 	# pitch first about the model's own X axis (looking up is a negative turn about it), then yaw about the vertical
-	var turn := Quaternion(Vector3.UP, look_yaw) * Quaternion(Vector3.RIGHT, -look_pitch)
-	for part in LOOK_SHARE:
-		_stack(offsets, part, Quaternion.IDENTITY.slerp(turn, LOOK_SHARE[part]))
+	var aim := Quaternion(Vector3.UP, look_yaw) * Quaternion(Vector3.RIGHT, -look_pitch)
+	# The clip already holds her spine, neck and head in some pose (and swings the pelvis and spine as she walks). Ask the neck and head
+	# only for what is still needed to point the head exactly where `aim` says, however the clip has them: the neck takes its share
+	# and the head takes whatever is left, so the gaze neither bobs with her stride nor drifts with her idle posture.
+	var below := offsets[bone["Hips"]] * offsets[bone["Spine"]] * offsets[bone["Chest"]] * offsets[bone["UpperChest"]]
+	var clip_neck := offsets[bone["Neck"]]
+	var clip_head := offsets[bone["Head"]]
+	var needed := (below * clip_neck * clip_head).inverse() * aim
+	if needed.w < 0.0:
+		needed = -needed
+	var neck_turn := Quaternion.IDENTITY.slerp(needed, LOOK_SHARE["Neck"])
+	var head_turn := clip_head.inverse() * neck_turn.inverse() * (below * clip_neck).inverse() * aim
+	_stack(offsets, "Neck", neck_turn)
+	_stack(offsets, "Head", head_turn)
 
 
 func _add_reaction(offsets: Array[Quaternion]) -> void:
 	for part in REACTION_SHARE:
 		_stack(offsets, part, rotation_from_vector(hit_angle * REACTION_SHARE[part]))
+
+
+# ---- clips ------------------------------------------------------------------------------------------------------------------------------
+
+# assets/woman/clips.json is written by tools/bake_clips.gd: for each clip, per frame, how far each animated bone is turned from its
+# parent's pose (as a quaternion), and how far the hips travel.
+func _load_clips() -> void:
+	if not FileAccess.file_exists(CLIPS):
+		push_warning("no baked clips at " + CLIPS)
+		return
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(CLIPS))
+	for bone_name in data.bones:
+		clip_bones.append(bone[bone_name])
+	for name_in_file in data.clips:
+		var c: Dictionary = data.clips[name_in_file]
+		var frames := int(c.frames)
+		var rot: Array = []
+		for f in frames:
+			var row: Array = c.rot[f]
+			var qs: Array[Quaternion] = []
+			for k in clip_bones.size():
+				qs.append(Quaternion(row[k * 4], row[k * 4 + 1], row[k * 4 + 2], row[k * 4 + 3]).normalized())
+			rot.append(qs)
+		var hips: Array[Vector3] = []
+		for h in c.hips:
+			hips.append(Vector3(h[0], h[1], h[2]))
+		clips[name_in_file] = {"frames": frames, "length": float(c.length), "loop": bool(c.loop), "speed": float(c.speed),
+			"fps": float(data.fps), "rot": rot, "hips": hips}
+	if clips.has("Walk_Loop") and clips["Walk_Loop"].speed > 0.1:
+		walk_speed = clips["Walk_Loop"].speed
+
+
+func _sample(name_of_clip: String, t: float) -> Dictionary:
+	var c: Dictionary = clips[name_of_clip]
+	var f: float = t * c.fps
+	var i0 := int(floor(f))
+	var u := f - float(i0)
+	var n: int = c.frames
+	var i1 := i0 + 1
+	if c.loop:
+		i0 = posmod(i0, n)
+		i1 = posmod(i1, n)
+	else:
+		i0 = clampi(i0, 0, n - 1)
+		i1 = clampi(i1, 0, n - 1)
+	var a: Array = c.rot[i0]
+	var b: Array = c.rot[i1]
+	var out: Array[Quaternion] = []
+	for k in a.size():
+		out.append(a[k].slerp(b[k], u))
+	return {"rot": out, "hips": c.hips[i0].lerp(c.hips[i1], u)}
+
+
+func _advance(name_of_clip: String, t: float, by: float) -> float:
+	var c: Dictionary = clips[name_of_clip]
+	t += by
+	return fposmod(t, c.length) if c.loop else minf(t, c.length)
+
+
+func _update_clip(dt: float) -> void:
+	if clips.is_empty():
+		return
+	var moving := speed > 0.05
+	var stepping := absf(turn_velocity) > deg_to_rad(14.0)
+	var wanted := "Walk_Loop" if ((moving or stepping) and clips.has("Walk_Loop")) else "Idle_Loop"
+	if wanted != clip_name:
+		fade_name = clip_name
+		fade_time = clip_time
+		fade_rate = clip_rate
+		fade = 0.0
+		clip_name = wanted
+		clip_time = 0.0
+	if moving:
+		clip_rate = clampf(speed / walk_speed, 0.5, 1.4)     # her feet keep up with the ground whatever her speed
+	else:
+		clip_rate = TURN_STEP_RATE if stepping else 1.0
+	clip_time = _advance(clip_name, clip_time, dt * clip_rate)
+	if fade < 1.0:
+		fade_time = _advance(fade_name, fade_time, dt * fade_rate)
+		fade = minf(1.0, fade + dt / FADE_TIME)
+
+
+# Sets each animated bone's offset from the clip (blending from the previous one) and returns how far the hips travel.
+func _add_clip(offsets: Array[Quaternion]) -> Vector3:
+	if clips.is_empty():
+		return Vector3.ZERO
+	var now := _sample(clip_name, clip_time)
+	var rot: Array = now.rot
+	var hips: Vector3 = now.hips
+	if fade < 1.0 and fade_name != "":
+		var before := _sample(fade_name, fade_time)
+		var w := smoothstep(0.0, 1.0, fade)
+		for k in rot.size():
+			rot[k] = before.rot[k].slerp(rot[k], w)
+		hips = before.hips.lerp(hips, w)
+	for k in clip_bones.size():
+		offsets[clip_bones[k]] = rot[k]
+	return hips
+
+
+# ---- walking ----------------------------------------------------------------------------------------------------------------------------
+
+func _has_target() -> bool:
+	return target != null and is_instance_valid(target) and target.is_inside_tree()
+
+
+# Decides where she is going and how she is turning, then moves her body (this node). Her parent is expected to be unrotated.
+func _update_movement(dt: float) -> void:
+	var player := Vector3.ZERO
+	var watching := _has_target()
+	if watching:
+		player = Vector3(target.global_position.x, global_position.y, target.global_position.z)
+	pause_timer = maxf(0.0, pause_timer - dt)
+	var staggered := stun > 0.0
+	if move_target == null and wander and pause_timer <= 0.0 and not staggered:
+		move_target = _pick_wander_target(player if watching else null)
+		if move_target == null:
+			pause_timer = 1.0
+
+	var desired_speed := 0.0
+	var desired_turn := 0.0
+	if move_target != null:
+		var to_goal: Vector3 = move_target - global_position
+		to_goal.y = 0.0
+		var distance := to_goal.length()
+		if distance < 0.08:
+			move_target = null
+			pause_timer = rng.randf_range(2.0, 5.0)
+		else:
+			var error := wrapf(atan2(to_goal.x, to_goal.z) - rotation.y, -PI, PI)
+			desired_turn = clampf(error * 5.0, -TURN_RATE, TURN_RATE)
+			if absf(error) < deg_to_rad(35.0):                       # turn on the spot first, walk once she is facing the way
+				desired_speed = minf(walk_speed, 0.2 + distance * 1.5)
+	elif watching:
+		# standing: turn the body to face the player once they have moved well round to the side
+		var to_player := player - global_position
+		if to_player.length() > 0.05:
+			var error := wrapf(atan2(to_player.x, to_player.z) - rotation.y, -PI, PI)
+			if turning_to_face and absf(error) < FACE_DONE:
+				turning_to_face = false
+			elif not turning_to_face and absf(error) > FACE_AFTER:
+				turning_to_face = true
+			if turning_to_face and body_turns:
+				desired_turn = clampf(error * 4.0, -TURN_RATE, TURN_RATE)
+	if staggered:
+		desired_speed = 0.0
+	turn_velocity = move_toward(turn_velocity, desired_turn, TURN_ACCEL * dt)
+	speed = move_toward(speed, desired_speed, WALK_ACCEL * (4.0 if staggered else 1.0) * dt)
+	rotation.y += turn_velocity * dt
+	global_position += Vector3(sin(rotation.y), 0.0, cos(rotation.y)) * speed * dt
+
+
+func _pick_wander_target(player: Variant) -> Variant:
+	for attempt in 10:
+		var angle := rng.randf() * TAU
+		var point := home + Vector3(cos(angle), 0.0, sin(angle)) * rng.randf_range(0.4, WANDER_RADIUS)
+		if point.distance_to(global_position) < 0.4:
+			continue
+		if player != null:
+			var here := Vector2(global_position.x, global_position.z)
+			var there := Vector2(point.x, point.z)
+			var at := Vector2(player.x, player.z)
+			if at.distance_to(there) < KEEP_AWAY:
+				continue
+			if at.distance_to(Geometry2D.get_closest_point_to_segment(at, here, there)) < KEEP_AWAY * 0.8:
+				continue        # and the walk there must not brush past them either
+		return point
+	return null
 
 
 func _eyes_rest_middle() -> Vector3:

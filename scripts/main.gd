@@ -1,12 +1,17 @@
-# The sandbox: a woman standing a little way in front of you who watches you, and who you can punch. In a headset (OpenXR, Quest) you
-# have the skinned hands from the skatepark game on your controllers; on a flat screen the camera stands where you would, and
-# Space or a click throws a punch.
+# The sandbox: a woman a little way in front of you who watches you, turns to face you, wanders about, and who you can punch. In a
+# headset (OpenXR, Quest) you have the skinned hands from the skatepark game on your controllers: the left stick walks, the right stick
+# turns. On a flat screen the camera stands where you would: WASD walks, Q/E or the arrow keys turn, and Space or a click throws a punch.
 extends Node3D
 
 const REFRESH_RATE := 90.0
 const WOMAN_DISTANCE := 0.8        # metres in front of you; she faces +Z, so by default she faces the play-space centre
 const SETTLE_FRAMES := 30          # let headset tracking settle before reading where you are looking
 const GIVE_UP_FRAMES := 270        # ...but never wait longer than this (a few seconds) for a sensible head height
+const MOVE_SPEED := 1.6            # m/s walking with the left stick (or WASD)
+const TURN_SPEED := deg_to_rad(110.0)   # rad/s turning with the right stick (or Q/E, the arrow keys)
+const STICK_DEADZONE := 0.2
+const PERSONAL_SPACE := 0.45       # walking cannot take you closer than this to her
+const ARENA := 15.0                # and you cannot walk off the edge of the floor
 const EYE_HEIGHT := 1.62           # flat-screen camera height
 
 var vr := false
@@ -58,6 +63,8 @@ func _ready() -> void:
 		detector.add_hand("left", left_controller)
 		detector.add_hand("right", right_controller)
 	detector.punched.connect(_on_punched)
+	detector.reference = rig
+	woman.wander = true
 	if vr:
 		var xr := XRServer.find_interface("OpenXR")
 		if xr != null and xr.has_signal("pose_recentered"):
@@ -80,6 +87,16 @@ func _process(delta: float) -> void:
 		if (settle_frames > SETTLE_FRAMES and camera.position.y > 0.4) or settle_frames > GIVE_UP_FRAMES:
 			place_woman()
 			placed = true
+	var move := Vector2.ZERO
+	var turn := 0.0
+	if vr:
+		move = stick_value(left_controller.get_vector2("primary"))
+		turn = stick_value(right_controller.get_vector2("primary")).x
+	else:
+		move = Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
+			float(Input.is_key_pressed(KEY_W)) - float(Input.is_key_pressed(KEY_S)))
+		turn = float(Input.is_key_pressed(KEY_E) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_Q) or Input.is_key_pressed(KEY_LEFT))
+	locomote(move, turn, dt)
 	if hands != null:
 		hands.update(dt)
 	detector.update(dt, woman)
@@ -98,6 +115,41 @@ func _unhandled_input(event: InputEvent) -> void:
 func place_woman() -> void:
 	woman.visible = true
 	woman.global_transform = placement(camera.global_position, -camera.global_basis.z, rig.global_position.y, WOMAN_DISTANCE)
+	woman.home = woman.global_position
+	woman.move_target = null
+	woman.pause_timer = 3.0
+
+
+# A thumbstick reading with its dead zone taken out (so it rests at exactly zero and ramps up from there).
+static func stick_value(raw: Vector2) -> Vector2:
+	var length := raw.length()
+	if length < STICK_DEADZONE:
+		return Vector2.ZERO
+	return raw / length * minf(1.0, (length - STICK_DEADZONE) / (1.0 - STICK_DEADZONE))
+
+
+# Walk (move.y forward, move.x right, relative to where you are looking) and turn (+ is right). Turning pivots on your head, so the room
+# does not swing round you. Everything you hold moves with the play space.
+func locomote(move: Vector2, turn: float, dt: float) -> void:
+	if absf(turn) > 0.001:
+		var angle := -turn * TURN_SPEED * dt
+		var pivot := camera.global_position
+		rig.global_position = pivot + (rig.global_position - pivot).rotated(Vector3.UP, angle)
+		rig.rotate_y(angle)
+	if move.length() > 0.001:
+		var forward := -camera.global_basis.z
+		forward.y = 0.0
+		var right := camera.global_basis.x
+		right.y = 0.0
+		var heading := (forward.normalized() * move.y + right.normalized() * move.x) if forward.length() > 0.01 else Vector3.ZERO
+		rig.global_position += heading * MOVE_SPEED * dt
+		# you cannot walk through her, or off the floor
+		var away := Vector2(camera.global_position.x - woman.global_position.x, camera.global_position.z - woman.global_position.z)
+		if away.length() < PERSONAL_SPACE:
+			var push := (away.normalized() if away.length() > 0.001 else Vector2.DOWN) * (PERSONAL_SPACE - away.length())
+			rig.global_position += Vector3(push.x, 0.0, push.y)
+		rig.global_position.x = clampf(rig.global_position.x, -ARENA, ARENA)
+		rig.global_position.z = clampf(rig.global_position.z, -ARENA, ARENA)
 
 
 static func placement(camera_position: Vector3, camera_forward: Vector3, floor_y: float, distance: float) -> Transform3D:
@@ -110,7 +162,7 @@ static func placement(camera_position: Vector3, camera_forward: Vector3, floor_y
 
 # Flat-screen punch: a fist from the camera, straight at her face.
 func throw_flat_punch() -> void:
-	var from := camera.global_position + Vector3(0.18 if flat_hit_hand == "right" else -0.18, -0.25, -0.3)
+	var from := camera.global_transform * Vector3(0.18 if flat_hit_hand == "right" else -0.18, -0.25, -0.3)
 	var velocity := (woman.head_center() - from).normalized() * 5.0
 	_on_punched(flat_hit_hand, woman.head_center() - velocity.normalized() * (Woman.HEAD_RADIUS * 0.8), velocity, 0.8)
 	flat_hit_hand = "left" if flat_hit_hand == "right" else "right"

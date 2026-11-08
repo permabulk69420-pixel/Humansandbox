@@ -223,6 +223,24 @@ for v in body.data.vertices:
     wd["Head"] = wd.get("Head", 0.0) + t
     set_weights(body, v, wd)
 
+# The collar sits on the neck: let its vertices take the weights of the skin right under them (easing in over the last few centimetres),
+# so the two move as one when the head, neck and chest tilt against each other and no skin shows through the neckline.
+from mathutils import kdtree
+tree = kdtree.KDTree(len(body.data.vertices))
+for v in body.data.vertices:
+    tree.insert(v.co, v.index)
+tree.balance()
+clothes = objs["Clothes"]
+for v in clothes.data.vertices:
+    t = smoothstep(1.28, 1.33, v.co.z)
+    if t <= 0.0:
+        continue
+    _, nearest, _ = tree.find(v.co)
+    own = weights_of(clothes, v)
+    skin = weights_of(body, body.data.vertices[nearest])
+    mixed = {k: own.get(k, 0.0) * (1.0 - t) + skin.get(k, 0.0) * t for k in set(own) | set(skin)}
+    set_weights(clothes, v, mixed)
+
 # glTF holds four influences per vertex.
 for key in ("Body", "Clothes", "Shoes"):
     select_only(objs[key])

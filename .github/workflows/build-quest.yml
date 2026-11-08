@@ -68,6 +68,7 @@ jobs:
         run: |
           godot --headless --import || true
           godot --headless -s res://tests/woman_logic.gd
+          godot --headless -s res://tests/walk_logic.gd
 
       - name: OpenXR Vendors plugin (the Meta Quest loader)
         run: |

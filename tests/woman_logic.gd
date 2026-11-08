@@ -120,6 +120,7 @@ func test_look() -> void:
 func test_look_limits() -> void:
 	print("look limits")
 	var w := make_woman(Vector3(0, 1.6, -2.0))   # behind her
+	w.body_turns = false                          # (left to herself she would turn right round: this checks the neck on its own)
 	step(w, 3.0)
 	var head_yaw := absf(yaw_of(w.head_forward()))
 	check(head_yaw < 70.0 and head_yaw > 55.0, "head stops at its limit when the player is behind her (%.0f deg)" % head_yaw)
@@ -319,6 +320,8 @@ func test_main_scene() -> void:
 	check(not main.vr, "runs on a flat screen without a headset")
 	check(main.woman != null and main.woman.target == main.camera, "she is watching the camera")
 	check(main.woman.global_position.z < -0.5, "she stands in front of the player")
+	for i in 72:   # a second for her gaze to settle on the player
+		main.woman.update(1.0 / 72.0)
 	check(angle_between(main.woman.head_forward(), main.camera.global_position - main.woman.head_center()) < 8.0, "and faces the player")
 	var before: int = main.woman.hits
 	main.throw_flat_punch()
