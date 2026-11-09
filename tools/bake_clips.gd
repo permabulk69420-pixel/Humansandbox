@@ -128,6 +128,12 @@ func run() -> void:
 		fix[tname(side + "Hand")] = Quaternion(hand_dir, (src.get_bone_global_rest(fingers).origin - src.get_bone_global_rest(sh).origin).normalized())
 		print("%s arm correction (deg): upper %.0f  lower %.0f  hand %.0f" % [side, rad_to_deg(fix[tname(side + "UpperArm")].get_angle()), rad_to_deg(fix[tname(side + "LowerArm")].get_angle()), rad_to_deg(fix[tname(side + "Hand")].get_angle())])
 
+	# the fingers sit on the hand, so they are held at the same different angle from the source's as the hand is
+	for bone_name in bones:
+		for finger in FINGERS:
+			if bone_name.contains("Hand" + String(finger).capitalize()):
+				fix[bone_name] = fix[tname(("Left" if bone_name.contains("_Left") else "Right") + "Hand")]
+
 	var hips_scale := tgt.get_bone_global_rest(tgt.find_bone(tname("Hips"))).origin.y / src.get_bone_global_rest(src.find_bone(SOURCE_HIPS)).origin.y
 	var leg_ratio := (tgt.get_bone_global_rest(tgt.find_bone(tname("LeftUpperLeg"))).origin.y - tgt.get_bone_global_rest(tgt.find_bone(tname("LeftFoot"))).origin.y) \
 		/ (src.get_bone_global_rest(src.find_bone(role_to_src["LeftUpperLeg"])).origin.y - src.get_bone_global_rest(src.find_bone(SOURCE_FOOT)).origin.y)
