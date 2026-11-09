@@ -130,6 +130,9 @@ func run() -> void:
 		fix[tname(side + "Hand")] = Quaternion(hand_dir, (src.get_bone_global_rest(fingers).origin - src.get_bone_global_rest(sh).origin).normalized())
 		print("%s arm correction (deg): upper %.0f  lower %.0f  hand %.0f" % [side, rad_to_deg(fix[tname(side + "UpperArm")].get_angle()), rad_to_deg(fix[tname(side + "LowerArm")].get_angle()), rad_to_deg(fix[tname(side + "Hand")].get_angle())])
 
+	# the hand carries on from the forearm (a hand with a correction of its own twists the skin at the wrist)
+	for side in ["Left", "Right"]:
+		fix[tname(side + "Hand")] = fix[tname(side + "LowerArm")]
 	# the fingers sit on the hand, so they are held at the same different angle from the source's as the hand is
 	for bone_name in bones:
 		for finger in FINGERS:
@@ -191,8 +194,11 @@ func routine(base: Dictionary, bones: Array[String]) -> Dictionary:
 		turns["UpperChest"] = Quaternion(Vector3.BACK, deg_to_rad(6.0) * roll) * Quaternion(Vector3.RIGHT, deg_to_rad(6.0) * sin(TAU * t / 4.0 - 1.6))
 		turns["Head"] = Quaternion(Vector3.BACK, deg_to_rad(10.0) * sin(TAU * t / 4.0 + 0.6)) * Quaternion(Vector3.UP, deg_to_rad(16.0) * sin(TAU * t / 8.0))
 		# arms: up and out to the side (left, right, both), the forearms waving while they are up, a little loose swing the rest of the time
-		turns["LeftUpperArm"] = Quaternion(Vector3.BACK, deg_to_rad(145.0) * left_up)
-		turns["RightUpperArm"] = Quaternion(Vector3.BACK, deg_to_rad(-145.0) * right_up)
+		# (the collarbone lifts with the arm, and the arm comes a little forward, or the shoulder folds in on itself)
+		turns["LeftShoulder"] = Quaternion(Vector3.BACK, deg_to_rad(22.0) * left_up)
+		turns["RightShoulder"] = Quaternion(Vector3.BACK, deg_to_rad(-22.0) * right_up)
+		turns["LeftUpperArm"] = Quaternion(Vector3.RIGHT, deg_to_rad(-28.0) * left_up) * Quaternion(Vector3.BACK, deg_to_rad(95.0) * left_up)
+		turns["RightUpperArm"] = Quaternion(Vector3.RIGHT, deg_to_rad(-28.0) * right_up) * Quaternion(Vector3.BACK, deg_to_rad(-95.0) * right_up)
 		turns["LeftLowerArm"] = Quaternion(Vector3.FORWARD, deg_to_rad(28.0) * sin(TAU * t * 2.0) * left_up)
 		turns["RightLowerArm"] = Quaternion(Vector3.BACK, deg_to_rad(28.0) * sin(TAU * t * 2.0 + 1.0) * right_up)
 		# legs: dropping into a squat (thighs forward, knees bent, feet kept flat) with the hips lowered to match
