@@ -968,6 +968,17 @@ func _booth(zone: String, cx: float, cz: float) -> void:
 	_solid(Vector3((x0 + x1) * 0.5, 0.37, (z0 + z1 - seat_d) * 0.5 + 0.1), Vector3((x1 - x0) - 2.0 * seat_d - 0.5, 0.74, 0.75))
 
 
+# One of the people (scripts/person.gd): stands at `at` (a place in the world), turned `yaw` degrees (they face +z), and is solid to you.
+func _person(zone: String, character: String, clip: String, at: Vector2, yaw: float) -> Person:
+	var person := Person.new()
+	person.setup(character, clip)
+	person.position = Vector3(at.x, 0.0, at.y)
+	person.rotation_degrees.y = yaw
+	(_zones[zone] as Node3D).add_child(person)
+	_solid_cyl(Vector3(at.x, 0.85, at.y), 0.3, 1.7)
+	return person
+
+
 # A Poly Haven model, placed by its base and turned `yaw` degrees (they face +z), solid to you.
 func _prop(zone: String, id: String, at: Vector2, yaw := 0.0) -> Node3D:
 	var scene := load(MODEL % [id, id]) as PackedScene
@@ -1173,6 +1184,10 @@ func _build_dance_floor() -> void:
 		_table(zone, at, 0.32, 1.05)
 		_stool(zone, at + Vector2(-0.5, 0.3))
 		_stool(zone, at + Vector2(0.45, -0.35))
+	# a woman dancing in the middle of the floor (turned to face the way in), with a light of her own to be seen by
+	var dancer := wv(1.5, -0.4)
+	_person(zone, "clubgoer", "Dance_Loop", dancer, 90.0)
+	_omni(zone, Vector3(dancer.x, 3.4, dancer.y), PINK, 1.2, 3.5)
 	_perimeter(zone, 3.2, CYAN)
 
 
@@ -1259,6 +1274,8 @@ func _build_bar() -> void:
 	while z < wz(2.1):
 		_stool(zone, Vector2(stool_x, z))
 		z += 0.8
+	# the bartender, behind the counter in the middle of it, facing the customers
+	_person(zone, "bartender", "Idle_Loop", Vector2(counter_x + 1.1, wz(-1.05)), -90.0)
 	# the back bar along the east wall: a low cupboard, then lit shelves of bottles up the wall
 	var vt := _tile("veneer")
 	var back_z := wz(-1.05)

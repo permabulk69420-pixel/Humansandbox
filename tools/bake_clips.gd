@@ -1,49 +1,80 @@
-# Bakes animation clips from another humanoid rig onto the woman's skeleton and writes them as JSON that scripts/woman.gd plays.
+# Bakes animation clips from another humanoid rig onto a character's skeleton and writes them as JSON that scripts/woman.gd (the woman) and
+# scripts/person.gd (the club's people) play.
 #
-#   godot --headless --path . -s res://tools/bake_clips.gd -- <source.glb> <out.json> <clip> [<clip> ...]
+#   godot --headless --path . -s res://tools/bake_clips.gd -- [--target=res://some.glb] <source.glb> <out.json> <clip> [<clip> ...]
+#
+# The target is the woman unless --target names another model: a Mixamo-rigged one (bones "mixamorig_Hips", ... as Godot names them) is
+# recognised by its hips, and its fingers are animated too.
 #
 # How a clip is carried across: each bone's rotation is taken as "how far has it turned from its own rest pose, in model space", which does
-# not depend on how either rig orients its bones. The arms are the exception where the rests differ in a way that matters (the source is in
-# a T-pose, the woman in an A-pose), so they get a fixed correction that turns her rest arm direction onto the source's. Hips travel is
-# scaled to her proportions. For walking clips it also measures how fast the planted foot moves, so she can be walked at the speed her
-# feet actually cover the ground (otherwise they skate).
+# not depend on how either rig orients its bones. The arms are the exception where the rests differ in a way that matters (the source and
+# the target hold their arms at different angles), so they get a fixed correction that turns the target's rest arm direction onto the
+# source's. Hips travel is scaled to the target's proportions. For walking clips it also measures how fast the planted foot moves, so the
+# character can be walked at the speed its feet actually cover the ground (otherwise they skate).
 #
-# BONE_MAP is the only thing that is specific to a source rig. This table is for the Quaternius Universal Animation Library (CC0);
-# for another rig (Mixamo is "mixamorig:Hips", "mixamorig:Spine", ... "mixamorig:LeftUpLeg", ...) change the names on the left.
+# SOURCE_* is the only thing that is specific to a source rig. This table is for the Quaternius Universal Animation Library (CC0, v2+ naming:
+# pelvis, spine_01, upperarm_l, ...); for another rig change the names on the left.
 extends SceneTree
 
-const CENTRE_MAP := {"DEF-hips": "Hips", "DEF-spine.001": "Spine", "DEF-spine.002": "Chest", "DEF-spine.003": "UpperChest",
-	"DEF-neck": "Neck", "DEF-head": "Head"}
-const SIDE_MAP := {"DEF-shoulder.%s": "%sShoulder", "DEF-upper_arm.%s": "%sUpperArm", "DEF-forearm.%s": "%sLowerArm", "DEF-hand.%s": "%sHand",
-	"DEF-thigh.%s": "%sUpperLeg", "DEF-shin.%s": "%sLowerLeg", "DEF-foot.%s": "%sFoot", "DEF-toe.%s": "%sToes"}
+# source bone -> the role it plays (the target's bones are found by role, whatever it calls them)
+const CENTRE_MAP := {"pelvis": "Hips", "spine_01": "Spine", "spine_02": "Chest", "spine_03": "UpperChest", "neck_01": "Neck", "Head": "Head"}
+const SIDE_MAP := {"clavicle_%s": "%sShoulder", "upperarm_%s": "%sUpperArm", "lowerarm_%s": "%sLowerArm", "hand_%s": "%sHand",
+	"thigh_%s": "%sUpperLeg", "calf_%s": "%sLowerLeg", "foot_%s": "%sFoot", "ball_%s": "%sToes"}
+const FINGERS := ["thumb", "index", "middle", "ring", "pinky"]          # source: thumb_01_l .. pinky_03_l
 const ARM_CORRECTED := ["UpperArm", "LowerArm", "Hand"]
-const HAND_DIRECTION_BONE := "DEF-f_middle.01.%s"      # what the source hand points at
-const SOURCE_FOOT := "DEF-foot.L"
+const SOURCE_HIPS := "pelvis"
+const SOURCE_FOOT := "foot_l"
+const SOURCE_MIDDLE_FINGER := "middle_01_%s"      # what the source hand points at
 const FPS := 30.0
+
+# a role's name on a Mixamo skeleton (after the importer turns "mixamorig:" into "mixamorig_")
+const MIXAMO_PREFIX := "mixamorig_"
+const MIXAMO := {"Hips": "Hips", "Spine": "Spine", "Chest": "Spine1", "UpperChest": "Spine2", "Neck": "Neck", "Head": "Head",
+	"Shoulder": "Shoulder", "UpperArm": "Arm", "LowerArm": "ForeArm", "Hand": "Hand", "UpperLeg": "UpLeg", "LowerLeg": "Leg", "Foot": "Foot", "Toes": "ToeBase"}
 
 var src: Skeleton3D
 var tgt: Skeleton3D
-var map := {}                 # source bone name -> woman bone name
-var tgt_to_src := {}
+var mixamo := false
+var role_to_src := {}         # role -> source bone name
+var tgt_to_src := {}          # target bone name -> source bone name (only the bones the source can animate)
 
 
 func _init() -> void:
 	run.call_deferred()
 
 
+# The target's bone for a role ("Hips", "LeftUpperArm", "RightIndex2", ...).
+func tname(role: String) -> String:
+	if not mixamo:
+		return role
+	var side := ""
+	var rest := role
+	for s in ["Left", "Right"]:
+		if role.begins_with(s):
+			side = s
+			rest = role.substr(s.length())
+	if MIXAMO.has(rest):
+		return MIXAMO_PREFIX + side + MIXAMO[rest]
+	return MIXAMO_PREFIX + side + "Hand" + rest         # the fingers: LeftHandIndex1
+
+
 func run() -> void:
-	var args := OS.get_cmdline_user_args()
+	var args := Array(OS.get_cmdline_user_args())
+	var target_path := "res://assets/woman/woman.glb"
+	for a in args.duplicate():
+		if String(a).begins_with("--target="):
+			target_path = String(a).trim_prefix("--target=")
+			args.erase(a)
 	if args.size() < 3:
-		print("usage: -s res://tools/bake_clips.gd -- <source.glb> <out.json> <clip> [<clip> ...]")
+		print("usage: -s res://tools/bake_clips.gd -- [--target=res://some.glb] <source.glb> <out.json> <clip> [<clip> ...]")
 		quit(1)
 		return
 	for k in CENTRE_MAP:
-		map[k] = CENTRE_MAP[k]
-	for side in ["L", "R"]:
+		role_to_src[CENTRE_MAP[k]] = k
+	for side in ["l", "r"]:
+		var word := "Left" if side == "l" else "Right"
 		for k in SIDE_MAP:
-			map[k % side] = SIDE_MAP[k] % ("Left" if side == "L" else "Right")
-	for k in map:
-		tgt_to_src[map[k]] = k
+			role_to_src[SIDE_MAP[k] % word] = k % side
 
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()
@@ -55,37 +86,51 @@ func run() -> void:
 	root.add_child(scene)
 	src = scene.find_child("Skeleton3D", true, false)
 	var player: AnimationPlayer = scene.find_child("AnimationPlayer", true, false)
-	var woman := (load("res://assets/woman/woman.glb") as PackedScene).instantiate()
-	root.add_child(woman)
-	tgt = woman.find_child("Skeleton3D", true, false)
+	var character := (load(target_path) as PackedScene).instantiate()
+	root.add_child(character)
+	tgt = character.find_child("Skeleton3D", true, false)
+	mixamo = tgt.find_bone(MIXAMO_PREFIX + "Hips") >= 0
+	if mixamo:
+		for side in ["l", "r"]:
+			var word := "Left" if side == "l" else "Right"
+			for f in FINGERS.size():
+				for joint in [1, 2, 3]:
+					role_to_src["%s%s%d" % [word, String(FINGERS[f]).capitalize(), joint]] = "%s_0%d_%s" % [FINGERS[f], joint, side]
+	for role in role_to_src:
+		if tgt.find_bone(tname(role)) >= 0 and src.find_bone(role_to_src[role]) >= 0:
+			tgt_to_src[tname(role)] = role_to_src[role]
 
-	# woman bones that get animation, parents first
+	# the target's bones that get animation, parents first
 	var bones: Array[String] = []
 	for i in tgt.get_bone_count():
 		if tgt_to_src.has(tgt.get_bone_name(i)):
 			bones.append(tgt.get_bone_name(i))
-	var fix := {}                # woman bone -> correction (arms)
+	print("%d of the target's %d bones are animated" % [bones.size(), tgt.get_bone_count()])
+	var fix := {}                # target bone -> correction (arms)
 	for side in ["Left", "Right"]:
-		var s := "L" if side == "Left" else "R"
+		var s := "l" if side == "Left" else "r"
 		var pairs := [["UpperArm", "LowerArm"], ["LowerArm", "Hand"]]
 		for pair in pairs:
-			var a := tgt.find_bone(side + pair[0])
-			var b := tgt.find_bone(side + pair[1])
+			var a := tgt.find_bone(tname(side + pair[0]))
+			var b := tgt.find_bone(tname(side + pair[1]))
 			var tgt_dir: Vector3 = (tgt.get_bone_global_rest(b).origin - tgt.get_bone_global_rest(a).origin).normalized()
-			var sa := src.find_bone(tgt_to_src[side + pair[0]])
-			var sb := src.find_bone(tgt_to_src[side + pair[1]])
+			var sa := src.find_bone(role_to_src[side + pair[0]])
+			var sb := src.find_bone(role_to_src[side + pair[1]])
 			var src_dir: Vector3 = (src.get_bone_global_rest(sb).origin - src.get_bone_global_rest(sa).origin).normalized()
-			fix[side + pair[0]] = Quaternion(tgt_dir, src_dir)
-		var hand := tgt.find_bone(side + "Hand")
-		var sh := src.find_bone(tgt_to_src[side + "Hand"])
-		var fingers := src.find_bone(HAND_DIRECTION_BONE % s)
-		fix[side + "Hand"] = Quaternion(tgt.get_bone_global_rest(hand).basis.y.normalized(),
-			(src.get_bone_global_rest(fingers).origin - src.get_bone_global_rest(sh).origin).normalized())
-		print("%s arm correction (deg): upper %.0f  lower %.0f  hand %.0f" % [side, rad_to_deg(fix[side + "UpperArm"].get_angle()), rad_to_deg(fix[side + "LowerArm"].get_angle()), rad_to_deg(fix[side + "Hand"].get_angle())])
+			fix[tname(side + pair[0])] = Quaternion(tgt_dir, src_dir)
+		var hand := tgt.find_bone(tname(side + "Hand"))
+		var sh := src.find_bone(role_to_src[side + "Hand"])
+		var fingers := src.find_bone(SOURCE_MIDDLE_FINGER % s)
+		var tgt_fingers := tgt.find_bone(tname(side + "Middle1")) if mixamo else -1
+		var hand_dir: Vector3 = tgt.get_bone_global_rest(hand).basis.y.normalized()
+		if tgt_fingers >= 0:
+			hand_dir = (tgt.get_bone_global_rest(tgt_fingers).origin - tgt.get_bone_global_rest(hand).origin).normalized()
+		fix[tname(side + "Hand")] = Quaternion(hand_dir, (src.get_bone_global_rest(fingers).origin - src.get_bone_global_rest(sh).origin).normalized())
+		print("%s arm correction (deg): upper %.0f  lower %.0f  hand %.0f" % [side, rad_to_deg(fix[tname(side + "UpperArm")].get_angle()), rad_to_deg(fix[tname(side + "LowerArm")].get_angle()), rad_to_deg(fix[tname(side + "Hand")].get_angle())])
 
-	var hips_scale := tgt.get_bone_global_rest(tgt.find_bone("Hips")).origin.y / src.get_bone_global_rest(src.find_bone("DEF-hips")).origin.y
-	var leg_ratio := (tgt.get_bone_global_rest(tgt.find_bone("LeftUpperLeg")).origin.y - tgt.get_bone_global_rest(tgt.find_bone("LeftFoot")).origin.y) \
-		/ (src.get_bone_global_rest(src.find_bone("DEF-thigh.L")).origin.y - src.get_bone_global_rest(src.find_bone(SOURCE_FOOT)).origin.y)
+	var hips_scale := tgt.get_bone_global_rest(tgt.find_bone(tname("Hips"))).origin.y / src.get_bone_global_rest(src.find_bone(SOURCE_HIPS)).origin.y
+	var leg_ratio := (tgt.get_bone_global_rest(tgt.find_bone(tname("LeftUpperLeg"))).origin.y - tgt.get_bone_global_rest(tgt.find_bone(tname("LeftFoot"))).origin.y) \
+		/ (src.get_bone_global_rest(src.find_bone(role_to_src["LeftUpperLeg"])).origin.y - src.get_bone_global_rest(src.find_bone(SOURCE_FOOT)).origin.y)
 	print("hips scale %.3f, leg ratio %.3f" % [hips_scale, leg_ratio])
 
 	var out := {"source": "Quaternius Universal Animation Library (Standard), CC0 1.0 - https://quaternius.com/packs/universalanimationlibrary.html",
@@ -120,7 +165,7 @@ func bake(anim: Animation, bones: Array[String], fix: Dictionary, hips_scale: fl
 	var hips: Array = []
 	var feet_y: Array[float] = []
 	var feet_z: Array[float] = []
-	var src_hips_rest := src.get_bone_global_rest(src.find_bone("DEF-hips")).origin
+	var src_hips_rest := src.get_bone_global_rest(src.find_bone(SOURCE_HIPS)).origin
 	var foot_index := src.find_bone(SOURCE_FOOT)
 	for f in frames:
 		var t := float(f) / FPS
@@ -145,7 +190,7 @@ func bake(anim: Animation, bones: Array[String], fix: Dictionary, hips_scale: fl
 				own = -own
 			row.append_array([snappedf(own.x, 0.0001), snappedf(own.y, 0.0001), snappedf(own.z, 0.0001), snappedf(own.w, 0.0001)])
 		rots.append(row)
-		var hp: Vector3 = (g[src.find_bone("DEF-hips")].origin - src_hips_rest) * hips_scale
+		var hp: Vector3 = (g[src.find_bone(SOURCE_HIPS)].origin - src_hips_rest) * hips_scale
 		hips.append([snappedf(hp.x, 0.0001), snappedf(hp.y, 0.0001), snappedf(hp.z, 0.0001)])
 		feet_y.append(g[foot_index].origin.y)
 		feet_z.append(g[foot_index].origin.z)
