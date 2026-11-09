@@ -50,6 +50,8 @@ func test_visibility() -> void:
 	check(sees(pvs, "stairs", "foyer") and not sees(pvs, "stairs", "bar"), "from the top of the stairs: the foyer, not the bar")
 	check(not sees(pvs, "foyer", "bar"), "the foyer does not see the bar through their shared wall")
 	check(sees(pvs, "stage", "dance") and sees(pvs, "bar", "dance") and sees(pvs, "bar", "stage"), "the hall and the bar see each other")
+	check(sees(pvs, "entry", "dance") and sees(pvs, "dance", "entry"), "the entrance foyer and the dance floor see each other")
+	check(not sees(pvs, "stairs", "entry") and not sees(pvs, "entry", "room1"), "the entrance cannot see the stairs or the first private room")
 	check(not sees(pvs, "lounge", "vip") and not sees(pvs, "lounge", "room1"), "the lounge sees neither the VIP corridor nor the private rooms")
 	check(not sees(pvs, "room1", "lounge") and not sees(pvs, "room1", "room2"), "a private room sees no other private room, nor the lounge")
 
@@ -100,6 +102,30 @@ func test_club() -> void:
 	check(not wall_hit.is_empty(), "the wall between the foyer and the bar is solid")
 	var door_hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(9.0, Club.FLOOR_Y + 1.0, -6.7), Vector3(7.0, Club.FLOOR_Y + 1.0, -6.7), 1))
 	check(door_hit.is_empty(), "the doorway from the foyer into the hall is open")
+	# the entrance: an open doorway into the hall, a closed door to the outside, a floor to stand on
+	var through := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(6.9, Club.FLOOR_Y + 1.0, 2.0), Vector3(6.9, Club.FLOOR_Y + 1.0, 5.0), 1))
+	check(through.is_empty(), "the doorway from the hall into the entrance foyer is open")
+	var outside := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(6.05, Club.FLOOR_Y + 1.0, 5.0), Vector3(6.05, Club.FLOOR_Y + 1.0, 7.0), 1))
+	check(not outside.is_empty() and outside.position.z < Club.ENTRY_Z1 + 0.01, "the door to the outside is shut (z=%.2f)" % (outside.position.z if not outside.is_empty() else -1.0))
+	var entry_floor := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(6.5, Club.FLOOR_Y + 0.45, 5.0), Vector3(6.5, Club.FLOOR_Y - 0.8, 5.0), KillRoom.WALKABLE))
+	check(not entry_floor.is_empty() and absf(entry_floor.position.y - Club.FLOOR_Y) < 0.01, "the entrance foyer has a floor")
+	check(club.zone_at(Vector3(6.5, 5.0, 5.0)) == "entry", "knows the entrance foyer")
+	check(Main.ROOM_MAX.y >= Club.ENTRY_Z1 - 0.31, "the movement backstop reaches the entrance")
+	var foyer_signs := club.zone_node("foyer").find_children("*", "Label3D", true, false)
+	var entry_signs := club.zone_node("entry").find_children("*", "Label3D", true, false)
+	check(foyer_signs.is_empty(), "the room at the top of the stairs has no admission sign")
+	check(entry_signs.size() == 1 and (entry_signs[0] as Label3D).text == "ADMISSION", "the admission sign is in the entrance foyer")
+	# the seating: all the stools (or booths) in a room are one MultiMesh, on one material
+	var seats := {"bar": ["club_stool", 9], "stage": ["club_stool", 11], "dance": ["club_stool", 4], "lounge": ["club_booth", 3]}
+	for zone in seats:
+		var multi := club.zone_node(zone).find_child(seats[zone][0], false, false) as MultiMeshInstance3D
+		check(multi != null and multi.multimesh.instance_count == seats[zone][1] and multi.multimesh.mesh.get_surface_count() == 1 and multi.material_override != null,
+			"%s: %d %ss in one draw call" % [zone, seats[zone][1], seats[zone][0]])
+		check(club.zone_node(zone).find_child("Leather", false, false) == null, "%s: no separate leather mesh" % zone)
+	var layers_ok := true
+	for zone in Club.ZONES:
+		layers_ok = layers_ok and (Club.zone_layer(zone) & Club.LAYERS) == Club.zone_layer(zone) or zone == "stairs"
+	check(layers_ok, "every zone's render layer is one the stairwell's lamps leave alone")
 	club.free()
 
 

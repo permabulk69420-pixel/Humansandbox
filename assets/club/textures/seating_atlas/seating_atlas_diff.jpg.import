@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://fkeecg8nwru8"
-path.s3tc="res://.godot/imported/leather_red_03_arm.jpg-be144f3bae26bc3a46984c07dcc8fab8.s3tc.ctex"
-path.etc2="res://.godot/imported/leather_red_03_arm.jpg-be144f3bae26bc3a46984c07dcc8fab8.etc2.ctex"
+uid="uid://lhv8itgncxn1"
+path.s3tc="res://.godot/imported/seating_atlas_diff.jpg-85d9a81d15fb2bb4bb734a98d74b7876.s3tc.ctex"
+path.etc2="res://.godot/imported/seating_atlas_diff.jpg-85d9a81d15fb2bb4bb734a98d74b7876.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/club/textures/leather_red_03/leather_red_03_arm.jpg"
-dest_files=["res://.godot/imported/leather_red_03_arm.jpg-be144f3bae26bc3a46984c07dcc8fab8.s3tc.ctex", "res://.godot/imported/leather_red_03_arm.jpg-be144f3bae26bc3a46984c07dcc8fab8.etc2.ctex"]
+source_file="res://assets/club/textures/seating_atlas/seating_atlas_diff.jpg"
+dest_files=["res://.godot/imported/seating_atlas_diff.jpg-85d9a81d15fb2bb4bb734a98d74b7876.s3tc.ctex", "res://.godot/imported/seating_atlas_diff.jpg-85d9a81d15fb2bb4bb734a98d74b7876.etc2.ctex"]
 
 [params]
 

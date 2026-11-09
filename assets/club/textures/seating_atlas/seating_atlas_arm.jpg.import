@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://djbov3rt8vhqd"
-path.s3tc="res://.godot/imported/leather_red_03_nor.jpg-afbdf0f82d76f424874929b7fd9b9900.s3tc.ctex"
-path.etc2="res://.godot/imported/leather_red_03_nor.jpg-afbdf0f82d76f424874929b7fd9b9900.etc2.ctex"
+uid="uid://byksnq1evvdt0"
+path.s3tc="res://.godot/imported/seating_atlas_arm.jpg-664a97ecb4c34e5cacbfee8ed5a4f511.s3tc.ctex"
+path.etc2="res://.godot/imported/seating_atlas_arm.jpg-664a97ecb4c34e5cacbfee8ed5a4f511.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/club/textures/leather_red_03/leather_red_03_nor.jpg"
-dest_files=["res://.godot/imported/leather_red_03_nor.jpg-afbdf0f82d76f424874929b7fd9b9900.s3tc.ctex", "res://.godot/imported/leather_red_03_nor.jpg-afbdf0f82d76f424874929b7fd9b9900.etc2.ctex"]
+source_file="res://assets/club/textures/seating_atlas/seating_atlas_arm.jpg"
+dest_files=["res://.godot/imported/seating_atlas_arm.jpg-664a97ecb4c34e5cacbfee8ed5a4f511.s3tc.ctex", "res://.godot/imported/seating_atlas_arm.jpg-664a97ecb4c34e5cacbfee8ed5a4f511.etc2.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=1
+compress/normal_map=0
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

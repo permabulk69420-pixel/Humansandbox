@@ -31,6 +31,7 @@ const HALL_H := 5.5
 const DOOR_H := 2.4
 const WALL_SOLID_H := 3.0                 # how high the walls are solid to you
 const STAGE_H := 0.6
+const ENTRY_Z1 := SOUTH + 3.4             # the entrance foyer sticks out of the hall's south wall this far
 
 # name -> [x0, z0, x1, z1, ceiling height, floor material, wall material]
 const ZONES := {
@@ -38,6 +39,7 @@ const ZONES := {
 	"bar": [8.0, -5.6, EAST, SOUTH, 3.2, "rubber", "brick"],
 	"stage": [-5.0, NORTH, 8.0, SPLIT_Z, HALL_H, "rubber", "brick"],
 	"dance": [-5.0, SPLIT_Z, 8.0, SOUTH, HALL_H, "rubber", "brick"],
+	"entry": [5.0, SOUTH, 8.0, ENTRY_Z1, 3.0, "rubber", "brick"],
 	"vip": [WEST, -5.2, -5.0, -3.6, 2.8, "carpet", "velvet"],
 	"room1": [WEST, NORTH, -12.7, -5.2, 2.8, "carpet", "panel"],
 	"room2": [-12.7, NORTH, -8.85, -5.2, 2.8, "carpet", "panel"],
@@ -58,10 +60,11 @@ const DOORWAYS := [
 	["vip", "room2", -11.4, -5.2, -10.2, -5.2, DOOR_H, ROSE],
 	["vip", "room3", -7.6, -5.2, -6.4, -5.2, DOOR_H, ROSE],
 	["stage", "dance", -5.0, SPLIT_Z, 8.0, SPLIT_Z, HALL_H, null],
+	["dance", "entry", 6.3, SOUTH, 7.7, SOUTH, DOOR_H, CYAN],
 ]
 # Each zone's meshes are on a render layer of their own (2, 4, 8... in the order above), and each light only lights its own zone (and layer
 # 1: your hands, and whatever you carry). A light that reached into the next room would draw that room's meshes all over again.
-const LAYERS := 0x3FE                     # all the club's layers: the stairwell's lamps leave them alone
+const LAYERS := 0x7FE                     # all the club's layers (one for each of the 11 zones): the stairwell's lamps leave them alone
 const VIS_DEPTH := 4                      # how many doorways in a row a zone can be seen through
 const VIS_SAMPLES := 11                   # points tried along each doorway when looking for a line through them
 
@@ -72,6 +75,7 @@ const STROBE_GAP := Vector2(9.0, 18.0)    # seconds between bursts, at random
 
 const TEX := "res://assets/%s/textures/%s/%s_%s.jpg"
 const MODEL := "res://assets/club/models/%s/%s.gltf"
+const SEATING := "res://assets/club/models/club_seating/%s.glb"      # the stool and the booth, modelled in Blender (tools/make_club_seating.py)
 # name -> [folder, texture id, tile size in metres, tint]
 const MATERIALS := {
 	"brick": ["club", "dark_brick_wall", 2.2, Color(0.7, 0.66, 0.72)],
@@ -79,7 +83,7 @@ const MATERIALS := {
 	"carpet": ["club", "dirty_carpet", 1.6, Color(0.42, 0.2, 0.48)],
 	"panel": ["club", "dark_paneled_wood", 1.2, Color(0.62, 0.4, 0.58)],
 	"velvet": ["club", "velour_velvet", 1.2, Color(0.7, 0.25, 0.45)],
-	"leather": ["club", "leather_red_03", 0.9, Color(0.8, 0.65, 0.7)],
+	"seating": ["club", "seating_atlas", 1.0, Color.WHITE],     # the stools and booths: leather, chrome and lacquer in one texture set (tools/make_club_atlas.py)
 	"veneer": ["club", "flamed_black_veneer", 1.5, Color(0.75, 0.75, 0.75)],
 	"planks": ["club", "black_painted_planks", 2.0, Color(0.8, 0.8, 0.8)],
 	"ceiling": ["room", "concrete_layers_02", 2.0, Color(0.13, 0.12, 0.15)],
@@ -130,6 +134,8 @@ var current_zone := ""
 var built := false
 var _zones := {}                         # zone -> its node
 var _batches := {}                       # "zone/material" -> Batch
+var _seats := {}                         # "zone/model" -> the transforms of every stool (or booth) of that model in that zone
+var _seat_meshes := {}                   # model -> its mesh
 var _materials := {}
 var _noise := FastNoiseLite.new()
 
@@ -167,12 +173,14 @@ func build() -> void:
 		_build_shell(zone)
 	_build_doorway_trim()
 	_build_foyer()
+	_build_entry()
 	_build_stage()
 	_build_dance_floor()
 	_build_bar()
 	_build_vip()
 	_build_lounge()
 	_flush()
+	_flush_seating()
 	for zone in _zones:
 		for gi in (_zones[zone] as Node3D).find_children("*", "GeometryInstance3D", true, false):
 			(gi as GeometryInstance3D).layers = zone_layer(zone)
@@ -389,6 +397,42 @@ func _flush() -> void:
 	_batches.clear()
 
 
+# Every stool (or booth) of a model in a zone is one MultiMesh: one draw call a zone for the lot, whatever their number. They all share the
+# seating material, so a model is one surface too.
+func _flush_seating() -> void:
+	for k in _seats:
+		var parts: PackedStringArray = String(k).split("/")
+		var transforms: Array = _seats[k]
+		var multi := MultiMesh.new()
+		multi.transform_format = MultiMesh.TRANSFORM_3D
+		multi.mesh = _seat_mesh(parts[1])
+		multi.instance_count = transforms.size()
+		for i in transforms.size():
+			multi.set_instance_transform(i, transforms[i])
+		var mi := MultiMeshInstance3D.new()
+		mi.name = parts[1]
+		mi.multimesh = multi
+		mi.material_override = _materials["seating"]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		(_zones[parts[0]] as Node3D).add_child(mi)
+	_seats.clear()
+
+
+func _seat(zone: String, model: String, xf: Transform3D) -> void:
+	var k := zone + "/" + model
+	if not _seats.has(k):
+		_seats[k] = []
+	_seats[k].append(xf)
+
+
+func _seat_mesh(model: String) -> Mesh:
+	if not _seat_meshes.has(model):
+		var node := (load(SEATING % model) as PackedScene).instantiate()
+		_seat_meshes[model] = (node.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D).mesh
+		node.free()
+	return _seat_meshes[model]
+
+
 static func _commit(b: Batch) -> ArrayMesh:
 	b.st.generate_tangents()
 	b.st.set_material(b.material)
@@ -510,25 +554,6 @@ func _cyl(b: Batch, p0: Vector3, p1: Vector3, r0: float, tile: float, sides := 1
 				else:
 					_v(b, cen + n1 * rr, nn, uv1, color)
 					_v(b, cen + n0 * rr, nn, uv0, color)
-
-
-# A flat ring lying level (a foot rail round a stool).
-func _ring(b: Batch, center: Vector3, radius: float, thick: float, segs := 14, sides := 6, color := Color.WHITE) -> void:
-	for i in segs:
-		var a0 := TAU * i / segs
-		var a1 := TAU * (i + 1) / segs
-		for k in sides:
-			var s0 := TAU * k / sides
-			var s1 := TAU * (k + 1) / sides
-			var pts: Array[Vector3] = []
-			var nrm: Array[Vector3] = []
-			for c in [[a0, s0], [a1, s0], [a1, s1], [a0, s1]]:
-				var out := Vector3(cos(c[0]), 0.0, sin(c[0]))
-				var n := out * cos(c[1]) + Vector3.UP * sin(c[1])
-				pts.append(center + out * radius + n * thick)
-				nrm.append(n)
-			for idx in [0, 2, 1, 0, 3, 2]:
-				_v(b, pts[idx], nrm[idx], Vector2.ZERO, color)
 
 
 # A curtain hanging in folds along a line on the floor plan, `inward` being the side it is seen from.
@@ -806,15 +831,11 @@ func _counter(zone: String, x0: float, z0: float, x1: float, z1: float, height: 
 	_solid(c + Vector3(0, height * 0.5, 0), Vector3(x1 - x0, height, z1 - z0))
 
 
-# A bar stool: a round leather seat on a chrome post, with a foot ring and a heavy round foot.
+# A bar stool (club_stool: a leather seat on a chrome post with a foot ring and a round foot, 0.76 m to the seat). Lower ones are the same
+# stool made smaller.
 func _stool(zone: String, at: Vector2, seat := 0.76) -> void:
-	var chrome := _b(zone, "chrome")
-	var p := Vector3(at.x, 0.0, at.y)
-	_cyl(chrome, p, p + Vector3(0, 0.025, 0), 0.2, 1.0, 16, true)
-	_cyl(chrome, p, p + Vector3(0, seat - 0.06, 0), 0.026, 1.0, 10, false)
-	_ring(chrome, p + Vector3(0, seat * 0.4, 0), 0.16, 0.011)
-	_cyl(_b(zone, "leather"), p + Vector3(0, seat - 0.075, 0), p + Vector3(0, seat, 0), 0.19, _tile("leather"), 16, true)
-	_solid(p + Vector3(0, seat * 0.5, 0), Vector3(0.36, seat, 0.36))
+	_seat(zone, "club_stool", Transform3D(Basis.from_scale(Vector3.ONE * (seat / 0.76)), Vector3(at.x, 0.0, at.y)))
+	_solid(Vector3(at.x, seat * 0.5, at.y), Vector3(0.36, seat, 0.36))
 
 
 # A round table on a chrome post: high (to stand at), or low (by a sofa).
@@ -850,37 +871,21 @@ func _pole(zone: String, at: Vector2, base: float, top: float) -> void:
 	_solid(Vector3(at.x, base + 1.0, at.y), Vector3(0.06, 2.0, 0.06))
 
 
-# A booth against the south wall: a U of leather benches with high backs round a table, a purple glow along the foot of the seats.
+# A booth against the south wall (club_booth, 3.0 m wide and 1.8 m deep: a U of leather benches with high backs round a black table), with a
+# purple glow along the foot of the seats. The model is stretched to the space if it is not that size.
 func _booth(zone: String, x0: float, x1: float, z0: float, z1: float) -> void:
-	var leather := _b(zone, "leather")
-	var lt := _tile("leather")
+	_seat(zone, "club_booth", Transform3D(Basis.from_scale(Vector3((x1 - x0) / 3.0, 1.0, (z1 - z0) / 1.8)), Vector3((x0 + x1) * 0.5, 0.0, (z0 + z1) * 0.5)))
 	var seat_d := 0.55
-	var seat_h := 0.45
 	var back_h := 1.15
-	# the back bench along the wall, and its backrest
-	_box(leather, Vector3((x0 + x1) * 0.5, seat_h * 0.5, z1 - seat_d * 0.5), Vector3(x1 - x0, seat_h, seat_d), lt)
-	_box(leather, Vector3((x0 + x1) * 0.5, (seat_h + back_h) * 0.5, z1 - 0.08), Vector3(x1 - x0, back_h - seat_h, 0.16), lt)
 	_solid(Vector3((x0 + x1) * 0.5, back_h * 0.5, z1 - seat_d * 0.5), Vector3(x1 - x0, back_h, seat_d))
-	# the two side benches, backs on the outside
 	for side in [[x0, 1.0], [x1, -1.0]]:
 		var sx: float = side[0]
 		var inward: float = side[1]
-		var cx := sx + inward * seat_d * 0.5
-		var cz := (z0 + z1 - seat_d) * 0.5
 		var run := (z1 - seat_d) - z0
-		_box(leather, Vector3(cx, seat_h * 0.5, cz), Vector3(seat_d, seat_h, run), lt)
-		_box(leather, Vector3(sx + inward * 0.08, (seat_h + back_h) * 0.5, cz), Vector3(0.16, back_h - seat_h, run), lt)
-		_solid(Vector3(cx, back_h * 0.5, cz), Vector3(seat_d, back_h, run))
+		_solid(Vector3(sx + inward * seat_d * 0.5, back_h * 0.5, (z0 + z1 - seat_d) * 0.5), Vector3(seat_d, back_h, run))
 		_glow(zone, Vector3(sx + inward * (seat_d + 0.01), 0.04, z0), Vector3(sx + inward * (seat_d + 0.01), 0.04, z1 - seat_d), PURPLE, 0.02)
 	_glow(zone, Vector3(x0 + seat_d, 0.04, z1 - seat_d - 0.01), Vector3(x1 - seat_d, 0.04, z1 - seat_d - 0.01), PURPLE, 0.02)
-	# the table
-	var tz := (z0 + z1 - seat_d) * 0.5 + 0.1
-	var tx := (x0 + x1) * 0.5
-	var w := (x1 - x0) - 2.0 * seat_d - 0.5
-	_box(_b(zone, "veneer"), Vector3(tx, 0.72, tz), Vector3(w, 0.04, 0.75), _tile("veneer"))
-	_cyl(_b(zone, "chrome"), Vector3(tx, 0.0, tz), Vector3(tx, 0.7, tz), 0.04, 1.0, 10, false)
-	_cyl(_b(zone, "chrome"), Vector3(tx, 0.0, tz), Vector3(tx, 0.02, tz), 0.26, 1.0, 16, true)
-	_solid(Vector3(tx, 0.37, tz), Vector3(w, 0.74, 0.75))
+	_solid(Vector3((x0 + x1) * 0.5, 0.37, (z0 + z1 - seat_d) * 0.5 + 0.1), Vector3((x1 - x0) - 2.0 * seat_d - 0.5, 0.74, 0.75))
 
 
 # A Poly Haven model, placed by its base and turned `yaw` degrees (they face +z), solid to you.
@@ -929,14 +934,38 @@ static func _bounds(model: Node3D) -> AABB:
 
 # ---- the foyer -------------------------------------------------------------------------------------------------------------------------
 
-# In through the heavy door from the stairs: a cashier's counter across the north wall, and the way on into the hall at the far corner, out
-# of line with the door, so the stairwell sees little of the club and the club none of the stairwell.
+# In through the heavy door from the stairs: a bare room, for now, and the way on into the hall at the far corner, out of line with the
+# door, so the stairwell sees little of the club and the club none of the stairwell.
 func _build_foyer() -> void:
-	_counter("foyer", 9.2, -10.05, 12.0, -9.45, 1.1, Vector2(0, 1), PINK)
-	_box(_b("foyer", "planks"), Vector3(10.6, 0.5, -10.7), Vector3(3.2, 1.0, 0.2), _tile("planks"))      # the back counter, behind the cashier
-	_sign("foyer", "ADMISSION", Vector3(10.6, 2.25, NORTH + 0.03), Vector3.BACK, PINK)
 	_perimeter("foyer", 2.85, PINK)
 	_omni("foyer", Vector3(10.4, 2.6, -8.0), PINK, 1.6, 4.8)
+
+
+# ---- the entrance -----------------------------------------------------------------------------------------------------------------------
+
+# The way in from the street: a small foyer off the south wall of the hall, east of the DJ's booth. A closed steel double door in its far
+# wall (there is no street yet), the admission counter against the east wall, and a doorway on into the hall.
+func _build_entry() -> void:
+	var zone := "entry"
+	_counter(zone, 7.35, 3.9, 7.95, 5.5, 1.1, Vector2(-1, 0), CYAN)
+	_sign(zone, "ADMISSION", Vector3(7.96, 2.3, 4.7), Vector3.LEFT, CYAN)
+	# the door to the outside, in the south wall, between neon posts: two black steel leaves with a chrome push bar on each
+	var dz := ENTRY_Z1 - 0.04
+	var dx0 := 5.35
+	var dx1 := 6.75
+	var mid := (dx0 + dx1) * 0.5
+	var gear := _b(zone, "gear")
+	for leaf in [[dx0, mid - 0.01], [mid + 0.01, dx1]]:
+		_box(gear, Vector3((leaf[0] + leaf[1]) * 0.5, 1.15, dz), Vector3(leaf[1] - leaf[0], 2.3, 0.06), 1.0)
+	for bx in [mid - 0.14, mid + 0.14]:
+		_cyl(_b(zone, "chrome"), Vector3(bx, 0.95, dz - 0.07), Vector3(bx, 1.15, dz - 0.07), 0.018, 1.0, 8, true)
+		for y in [0.97, 1.13]:
+			_cyl(_b(zone, "chrome"), Vector3(bx, y, dz - 0.03), Vector3(bx, y, dz - 0.07), 0.008, 1.0, 6, true)
+	_glow(zone, Vector3(dx0 - 0.03, 0.0, dz - 0.04), Vector3(dx0 - 0.03, 2.35, dz - 0.04), CYAN)
+	_glow(zone, Vector3(dx1 + 0.03, 0.0, dz - 0.04), Vector3(dx1 + 0.03, 2.35, dz - 0.04), CYAN)
+	_glow(zone, Vector3(dx0 - 0.03, 2.35, dz - 0.04), Vector3(dx1 + 0.03, 2.35, dz - 0.04), CYAN)
+	_perimeter(zone, 2.85, CYAN)
+	_omni(zone, Vector3(6.4, 2.6, 4.7), CYAN, 1.4, 4.5)
 
 
 # ---- the main hall: the stage end --------------------------------------------------------------------------------------------------
