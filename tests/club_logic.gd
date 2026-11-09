@@ -34,7 +34,7 @@ func sees(pvs: Dictionary, from: String, to: String) -> bool:
 
 func test_visibility() -> void:
 	print("what can be seen from where")
-	var pvs := Club.visibility(Club.ZONES, Club.DOORWAYS)
+	var pvs := Club.visibility(Club.world_zones(), Club.world_doorways())
 	var symmetric := true
 	var neighbours := true
 	var itself := true
@@ -43,7 +43,7 @@ func test_visibility() -> void:
 		for b in pvs[a]:
 			symmetric = symmetric and sees(pvs, b, a)
 	check(itself, "every zone sees itself")
-	for d in Club.DOORWAYS:
+	for d in Club.world_doorways():
 		neighbours = neighbours and sees(pvs, d[0], d[1]) and sees(pvs, d[1], d[0])
 	check(symmetric, "seeing runs both ways")
 	check(neighbours, "every zone sees the zones through its own doorways")
@@ -85,10 +85,24 @@ func test_club() -> void:
 			continue
 		var node := club.zone_node(zone)
 		check(node != null and node.find_children("*", "MeshInstance3D", true, false).size() > 0, "%s has meshes" % zone)
-	# points on the plan (x, height above the club floor, z) as they are in the world, where the club is scaled up
-	var at := func(x: float, y: float, z: float) -> Vector3: return club.to_global(Vector3(x, y, z))
+	# points on the plan (x, height above the club floor, z) as they are in the world, where the club's floor is bigger than the plan
+	var at := func(x: float, y: float, z: float) -> Vector3: return club.to_global(Club.w3(x, y, z))
 	check(club.zone_at(at.call(10.0, 1.0, -8.0)) == "foyer" and club.zone_at(at.call(1.5, 1.0, 0.0)) == "dance" and club.zone_at(at.call(-10.0, 1.0, -4.4)) == "vip", "knows which room a point is in")
-	check(is_equal_approx(club.to_global(Vector3(Club.PIVOT_X, 0.0, Club.PIVOT_Z)).x, Club.PIVOT_X) and is_equal_approx(club.to_global(Vector3(Club.PIVOT_X, 0.0, Club.PIVOT_Z)).z, Club.PIVOT_Z), "the club is scaled about the stairs' door, which stays where it is")
+	check(is_equal_approx(Club.wx(Club.PIVOT_X), Club.PIVOT_X) and is_equal_approx(Club.wz(Club.PIVOT_Z), Club.PIVOT_Z), "the plan is stretched about the stairs' door, which stays where it is")
+	# only the floor plan is bigger: a door, a ceiling, a counter, a stool are the size they are in real life
+	var zw: Dictionary = club.zones_w
+	var entry_w: float = zw["entry"][2] - zw["entry"][0]
+	check(is_equal_approx(entry_w, (Club.ZONES["entry"][2] - Club.ZONES["entry"][0]) * Club.SCALE), "the rooms are SCALE times as wide (entrance foyer %.2f m)" % entry_w)
+	check(is_equal_approx(zw["foyer"][4], Club.ZONES["foyer"][4]) and is_equal_approx(zw["dance"][4], Club.HALL_H), "but their ceilings are as high as they were")
+	var doors_ok := true
+	for i in club.doorways_w.size():
+		var plan: Array = Club.DOORWAYS[i]
+		var world: Array = club.doorways_w[i]
+		if plan[0] != "stairs" and is_equal_approx(plan[6], Club.DOOR_H):
+			var plan_width := Vector2(plan[2], plan[3]).distance_to(Vector2(plan[4], plan[5]))
+			doors_ok = doors_ok and is_equal_approx(Vector2(world[2], world[3]).distance_to(Vector2(world[4], world[5])), plan_width)
+	check(doors_ok, "and the doors are as wide as doors are")
+
 	club.view_from("room1")
 	check(club.zone_node("room1").visible and club.zone_node("vip").visible and not club.zone_node("lounge").visible and not club.zone_node("room2").visible, "in a private room, the lounge and the other rooms are hidden")
 	club.view_from("stage")
@@ -96,11 +110,14 @@ func test_club() -> void:
 	# the floor you stand on, the stage you can climb onto, the walls you cannot walk through
 	var space := club.get_world_3d().direct_space_state
 	var ray := func(from: Vector3, to: Vector3, mask: int) -> Dictionary: return space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, mask))
+	var bar_top: Dictionary = ray.call(at.call(11.025, 2.0, -1.0), at.call(11.025, 0.0, -1.0), 1)
+	check(not bar_top.is_empty() and absf(bar_top.position.y - (Club.FLOOR_Y + 1.1)) < 0.01, "the bar is 1.1 m high, not %.2f" % (1.1 * Club.SCALE))
 	var floor_hit: Dictionary = ray.call(at.call(1.5, 0.45, 0.0), at.call(1.5, -0.8, 0.0), KillRoom.WALKABLE)
 	check(not floor_hit.is_empty() and absf(floor_hit.position.y - Club.FLOOR_Y) < 0.01, "the dance floor is walkable at the top of the stairs (y=%.2f)" % (floor_hit.position.y if not floor_hit.is_empty() else -1.0))
 	var stage_hit: Dictionary = ray.call(at.call(1.5, 1.0, -9.0), at.call(1.5, -0.5, -9.0), KillRoom.WALKABLE)
-	check(not stage_hit.is_empty() and absf(stage_hit.position.y - (Club.FLOOR_Y + Club.STAGE_H * Club.SCALE)) < 0.01, "the stage top is walkable")
-	var step_hit: Dictionary = ray.call(at.call(-2.2, 0.45, -9.3), at.call(-2.2, -0.5, -9.3), KillRoom.WALKABLE)
+	check(not stage_hit.is_empty() and absf(stage_hit.position.y - (Club.FLOOR_Y + Club.STAGE_H)) < 0.01, "the stage top is walkable")
+	var first_step := Club.wx(-1.5) - 0.7                     # the middle of the first of the three steps up to the stage
+	var step_hit: Dictionary = ray.call(club.to_global(Vector3(first_step, 0.45, Club.wz(-9.3))), club.to_global(Vector3(first_step, -0.5, Club.wz(-9.3))), KillRoom.WALKABLE)
 	check(not step_hit.is_empty() and step_hit.position.y > Club.FLOOR_Y + 0.1 and step_hit.position.y < Club.FLOOR_Y + 0.3, "the first step up to it is within a stride (%.2f m)" % (step_hit.position.y - Club.FLOOR_Y if not step_hit.is_empty() else -1.0))
 	var wall_hit: Dictionary = ray.call(at.call(10.0, 1.0, -6.5), at.call(10.0, 1.0, -4.5), 1)
 	check(not wall_hit.is_empty(), "the wall between the foyer and the bar is solid")
@@ -115,7 +132,7 @@ func test_club() -> void:
 	check(through.is_empty(), "the doorway from the hall into the entrance foyer is open")
 	var outside: Dictionary = ray.call(at.call(6.0, 1.0, 5.0), at.call(6.0, 1.0, 9.0), 1)
 	var shut_at: float = club.to_local(outside.position).z if not outside.is_empty() else -1.0
-	check(not outside.is_empty() and absf(shut_at - Club.ENTRY_Z1) < 0.45, "the door to the outside is shut (z=%.2f on the plan)" % shut_at)
+	check(not outside.is_empty() and absf(shut_at - Club.wz(Club.ENTRY_Z1)) < 0.45, "the door to the outside is shut (z=%.2f)" % shut_at)
 	var entry_floor: Dictionary = ray.call(at.call(6.0, 0.45, 5.0), at.call(6.0, -0.8, 5.0), KillRoom.WALKABLE)
 	check(not entry_floor.is_empty() and absf(entry_floor.position.y - Club.FLOOR_Y) < 0.01, "the entrance foyer has a floor")
 	check(club.zone_at(at.call(6.0, 1.0, 5.0)) == "entry", "knows the entrance foyer")
@@ -132,7 +149,7 @@ func test_club() -> void:
 	check(foyer_signs.is_empty(), "the room at the top of the stairs has no admission sign")
 	check(entry_signs.size() == 1 and (entry_signs[0] as Label3D).text == "ADMISSION", "the admission sign is in the entrance foyer")
 	# the seating: all the stools (or booths) in a room are one MultiMesh, on one material
-	var seats := {"bar": ["club_stool", 9], "stage": ["club_stool", 11], "dance": ["club_stool", 4], "lounge": ["club_booth", 3]}
+	var seats := {"bar": ["club_stool", 11], "stage": ["club_stool", 11], "dance": ["club_stool", 4], "lounge": ["club_booth", 3]}
 	for zone in seats:
 		var multi := club.zone_node(zone).find_child(seats[zone][0], false, false) as MultiMeshInstance3D
 		check(multi != null and multi.multimesh.instance_count == seats[zone][1] and multi.multimesh.mesh.get_surface_count() == 1 and multi.material_override != null,
@@ -182,15 +199,15 @@ func test_stairwell_loads_the_club() -> void:
 	check(main.level == "club" and main.club.current_zone == "foyer", "in the foyer")
 	# walk about in the scaled club: through the entrance doorway, up to the outside door and no further
 	rig.rotation.y = PI                                      # facing south
-	rig.global_position = main.club.to_global(Vector3(6.0, 0.0, 1.0))
+	rig.global_position = main.club.to_global(Club.w3(6.0, 0.0, 1.0))
 	for i in 7 * 60:
 		main.locomote(Vector2(0, 1), 0.0, 1.0 / 60.0)
-	var wall_z: float = main.club.to_global(Vector3(0.0, 0.0, Club.ENTRY_Z1)).z
-	check(rig.global_position.z > main.club.to_global(Vector3(0.0, 0.0, Club.SOUTH + 0.5)).z and rig.global_position.z < wall_z - 0.2, "you can walk in through the entrance doorway and stop at the door to the outside (z=%.2f of %.2f)" % [rig.global_position.z, wall_z])
-	rig.global_position = main.club.to_global(Vector3(0.0, 0.0, 1.5))
+	var wall_z: float = main.club.to_global(Club.w3(0.0, 0.0, Club.ENTRY_Z1)).z
+	check(rig.global_position.z > main.club.to_global(Club.w3(0.0, 0.0, Club.SOUTH)).z + 0.5 and rig.global_position.z < wall_z - 0.2, "you can walk in through the entrance doorway and stop at the door to the outside (z=%.2f of %.2f)" % [rig.global_position.z, wall_z])
+	rig.global_position = main.club.to_global(Club.w3(0.0, 0.0, 1.5))
 	for i in 4 * 60:
 		main.locomote(Vector2(0, 1), 0.0, 1.0 / 60.0)
-	var hall_wall: float = main.club.to_global(Vector3(0.0, 0.0, Club.SOUTH)).z
+	var hall_wall: float = main.club.to_global(Club.w3(0.0, 0.0, Club.SOUTH)).z
 	check(rig.global_position.z < hall_wall - 0.2 and rig.global_position.z > hall_wall - 1.2, "walking at the hall's south wall stops you at it (z=%.2f of %.2f)" % [rig.global_position.z, hall_wall])
 	rig.rotation.y = 0.0
 	# and back down

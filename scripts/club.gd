@@ -21,8 +21,10 @@ const ROSE := Color(1.0, 0.25, 0.45)
 const AMBER := Color(1.0, 0.55, 0.15)
 
 # ---- the floor plan, in metres (x and z as in the basement below; heights from the club floor) ------------------------------------------
-# The whole club is drawn at SCALE times the size of the plan below (rooms, doorways, ceilings, furniture, all of it): the plan is in "plan
-# metres" and the Club node scales it, about the stairwell's door, so the stairs still come out at the foyer. One number makes it all bigger.
+# The plan below is in "plan metres". The club is built SCALE times as big on the floor: the plan's points are moved out from the stairwell's
+# door (wx, wz), so the stairs still come out at the foyer, and the things that stretch (rooms, the long openings, the stage, the bar, the truss)
+# are drawn between the moved points. Nothing else is scaled: a door, a ceiling, a step, a counter's height and depth, a stool, a table, a sofa, a
+# neon tube, a pole and a sign are the size they are in real life (it is a person's club), they are only put further apart.
 const SCALE := 1.3
 const PIVOT_X := KillRoom.HALL_X1         # the wall the stairs' door is in...
 const PIVOT_Z := (KillRoom.STAIR_DOOR_Z0 + KillRoom.STAIR_DOOR_Z1) * 0.5      # ...and the middle of that door
@@ -53,14 +55,13 @@ const ZONES := {
 	"room2": [-12.7, NORTH, -8.85, -5.2, 2.8, "carpet", "panel"],
 	"room3": [-8.85, NORTH, -5.0, -5.2, 2.8, "carpet", "panel"],
 	"lounge": [WEST, -3.6, -5.0, SOUTH, 3.2, "carpet", "panel"],
-	# the top of the stairwell: built by the basement, not here, but you look into the club from it (here as it is on the plan: the stairwell
-	# is the same size in the world whatever SCALE is, so on the plan it is smaller)
-	"stairs": [EAST, PIVOT_Z - (KillRoom.HALL_ZS - KillRoom.HALL_ZN) * 0.5 / SCALE, EAST + (KillRoom.STAIR_X1 - EAST) / SCALE, PIVOT_Z + (KillRoom.HALL_ZS - KillRoom.HALL_ZN) * 0.5 / SCALE, 0.0, "", ""],
+	# the top of the stairwell: built by the basement, not here, but you look into the club from it (the only zone that is not moved by SCALE)
+	"stairs": [EAST, KillRoom.HALL_ZN, KillRoom.STAIR_X1, KillRoom.HALL_ZS, 0.0, "", ""],
 }
 # the gaps in the walls: [zone, zone, x0, z0, x1, z1, height, neon round it (or null)]
 const DOORWAYS := [
-	# the doorway from the stairs is the size of the stairwell's heavy door in the world, so on the plan it is smaller than SCALE says
-	["stairs", "foyer", EAST, PIVOT_Z - (KillRoom.STAIR_DOOR_Z1 - KillRoom.STAIR_DOOR_Z0) * 0.5 / SCALE, EAST, PIVOT_Z + (KillRoom.STAIR_DOOR_Z1 - KillRoom.STAIR_DOOR_Z0) * 0.5 / SCALE, KillRoom.STAIR_DOOR_H / SCALE, null],
+	# the doorway from the stairs is the stairwell's heavy door (not moved by SCALE)
+	["stairs", "foyer", EAST, KillRoom.STAIR_DOOR_Z0, EAST, KillRoom.STAIR_DOOR_Z1, KillRoom.STAIR_DOOR_H, null],
 	["foyer", "stage", 8.0, -7.4, 8.0, -6.0, DOOR_H, PINK],
 	["bar", "stage", 8.0, -4.2, 8.0, SPLIT_Z, 2.8, null],      # the bar is open to the hall along most of its side
 	["bar", "dance", 8.0, SPLIT_Z, 8.0, 1.6, 2.8, null],
@@ -72,6 +73,59 @@ const DOORWAYS := [
 	["stage", "dance", -5.0, SPLIT_Z, 8.0, SPLIT_Z, HALL_H, null],
 	["dance", "entry", 5.3, SOUTH, 6.7, SOUTH, DOOR_H, CYAN],
 ]
+# A point of the plan, in the world.
+static func wx(x: float) -> float:
+	return PIVOT_X + (x - PIVOT_X) * SCALE
+
+
+static func wz(z: float) -> float:
+	return PIVOT_Z + (z - PIVOT_Z) * SCALE
+
+
+static func wv(x: float, z: float) -> Vector2:
+	return Vector2(wx(x), wz(z))
+
+
+static func w3(x: float, y: float, z: float) -> Vector3:
+	return Vector3(wx(x), y, wz(z))
+
+
+# The zones as they are in the world (the rooms are bigger than the plan; the stairs are as they are).
+static func world_zones() -> Dictionary:
+	var out := {}
+	for zone in ZONES:
+		var z: Array = (ZONES[zone] as Array).duplicate()
+		if zone != "stairs":
+			z[0] = wx(z[0])
+			z[1] = wz(z[1])
+			z[2] = wx(z[2])
+			z[3] = wz(z[3])
+		out[zone] = z
+	return out
+
+
+# The doorways as they are in the world: a real door (DOOR_H high) is as wide as it was, wherever it has moved to; the long openings between
+# rooms stretch with the rooms.
+static func world_doorways() -> Array:
+	var out := []
+	for d in DOORWAYS:
+		var e: Array = (d as Array).duplicate()
+		if d[0] != "stairs":
+			var a := wv(d[2], d[3])
+			var c := wv(d[4], d[5])
+			if is_equal_approx(d[6], DOOR_H):
+				var mid := (a + c) * 0.5
+				var half := Vector2(d[4] - d[2], d[5] - d[3]) * 0.5
+				a = mid - half
+				c = mid + half
+			e[2] = a.x
+			e[3] = a.y
+			e[4] = c.x
+			e[5] = c.y
+		out.append(e)
+	return out
+
+
 # Each zone's meshes are on a render layer of their own (2, 4, 8... in the order above), and each light only lights its own zone (and layer
 # 1: your hands, and whatever you carry). A light that reached into the next room would draw that room's meshes all over again.
 const LAYERS := 0x7FE                     # all the club's layers (one for each of the 11 zones): the stairwell's lamps leave them alone
@@ -140,6 +194,8 @@ class Batch:
 var collision_root: Node3D
 var environment: Environment             # the club's fog and ambient light (main.gd swaps it in when you are up here)
 var pvs := {}                            # zone -> the zones that can be seen from it
+var zones_w := {}                        # ZONES in the world
+var doorways_w: Array = []               # DOORWAYS in the world
 var current_zone := ""
 var built := false
 var _zones := {}                         # zone -> its node
@@ -164,8 +220,9 @@ var _flash_on := false
 # Builds the whole club. Safe to run on a worker thread: nothing here touches the scene tree until main.gd adds the finished club to it.
 func build() -> void:
 	name = "Club"
-	position = Vector3(PIVOT_X * (1.0 - SCALE), FLOOR_Y, PIVOT_Z * (1.0 - SCALE))
-	scale = Vector3.ONE * SCALE
+	position.y = FLOOR_Y
+	zones_w = world_zones()
+	doorways_w = world_doorways()
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_noise.frequency = 0.45
 	_noise.fractal_octaves = 3
@@ -196,7 +253,7 @@ func build() -> void:
 		for gi in (_zones[zone] as Node3D).find_children("*", "GeometryInstance3D", true, false):
 			(gi as GeometryInstance3D).layers = zone_layer(zone)
 	_build_environment()
-	pvs = visibility(ZONES, DOORWAYS)
+	pvs = visibility(zones_w, doorways_w)
 	built = true
 
 
@@ -243,8 +300,8 @@ func _update_strobe() -> void:
 # The zone a point in the world (your head) is in, or "" if it is in none of them.
 func zone_at(world_point: Vector3) -> String:
 	var p := to_local(world_point)
-	for zone in ZONES:
-		var z: Array = ZONES[zone]
+	for zone in zones_w:
+		var z: Array = zones_w[zone]
 		if p.x >= z[0] and p.x <= z[2] and p.z >= z[1] and p.z <= z[3]:
 			return zone
 	return ""
@@ -455,7 +512,7 @@ static func _commit(b: Batch) -> ArrayMesh:
 
 # Darker where the floor meets the walls, at the foot and the top of the walls, and in patches: a little depth without baked light.
 func _shade(p: Vector3, kind: String, zone: String) -> Color:
-	var z: Array = ZONES[zone]
+	var z: Array = zones_w[zone]
 	var x0: float = z[0]
 	var z0: float = z[1]
 	var x1: float = z[2]
@@ -648,7 +705,7 @@ func _solid_cyl(center: Vector3, radius: float, height: float, layer := 1) -> vo
 # A zone's floor, ceiling and walls (as seen from inside), with its doorways cut out and lintels over them; solid walls and a floor you
 # stand on.
 func _build_shell(zone: String) -> void:
-	var z: Array = ZONES[zone]
+	var z: Array = zones_w[zone]
 	var x0: float = z[0]
 	var z0: float = z[1]
 	var x1: float = z[2]
@@ -682,7 +739,7 @@ func _build_shell(zone: String) -> void:
 # The four edges of a zone, each as [start, length, direction, the doorways along it as [from, to, height, doorway] in order]. Each runs
 # from your left to your right as you face it from inside the zone.
 func _edges(zone: String) -> Array:
-	var z: Array = ZONES[zone]
+	var z: Array = zones_w[zone]
 	var corners := [Vector2(z[0], z[1]), Vector2(z[2], z[1]), Vector2(z[2], z[3]), Vector2(z[0], z[3]), Vector2(z[0], z[1])]
 	var out := []
 	for i in 4:
@@ -691,7 +748,7 @@ func _edges(zone: String) -> Array:
 		var length := a.distance_to(c)
 		var dir := (c - a) / length
 		var gaps := []
-		for d in DOORWAYS:
+		for d in doorways_w:
 			if d[0] != zone and d[1] != zone:
 				continue
 			var p0 := Vector2(d[2], d[3])
@@ -723,7 +780,7 @@ func _wall(zone: String, key: String, left: Vector2, right: Vector2, ya: float, 
 
 # Which way is into the zone from a point on its edge.
 func _inward(zone: String, p: Vector2) -> Vector2:
-	var z: Array = ZONES[zone]
+	var z: Array = zones_w[zone]
 	if absf(p.x - z[0]) < 0.01:
 		return Vector2.RIGHT
 	if absf(p.x - z[2]) < 0.01:
@@ -735,7 +792,7 @@ func _inward(zone: String, p: Vector2) -> Vector2:
 
 # Neon round the doorways, on both sides; a neon line under the long opening into the bar; signs over the doorways off the hall.
 func _build_doorway_trim() -> void:
-	for d in DOORWAYS:
+	for d in doorways_w:
 		if d[7] == null:
 			continue
 		var col: Color = d[7]
@@ -755,10 +812,10 @@ func _build_doorway_trim() -> void:
 		var off := 0.04 if zone == "bar" else -0.04
 		var z0 := -4.2 if zone != "dance" else SPLIT_Z
 		var z1 := 1.6 if zone != "stage" else SPLIT_Z
-		_glow(zone, Vector3(8.0 + off, 2.8, z0), Vector3(8.0 + off, 2.8, z1), AMBER)
-	_sign("dance", "BAR", Vector3(7.96, 3.25, -1.3), Vector3.LEFT, AMBER)
-	_sign("stage", "VIP", Vector3(-4.96, 2.72, -4.4), Vector3.RIGHT, RED)
-	_sign("dance", "LOUNGE", Vector3(-4.96, 2.72, 0.4), Vector3.RIGHT, PURPLE)
+		_glow(zone, Vector3(wx(8.0) + off, 2.8, wz(z0)), Vector3(wx(8.0) + off, 2.8, wz(z1)), AMBER)
+	_sign("dance", "BAR", w3(8.0, 3.25, -1.3) - Vector3(0.04, 0, 0), Vector3.LEFT, AMBER)
+	_sign("stage", "VIP", w3(-5.0, 2.72, -4.4) + Vector3(0.04, 0, 0), Vector3.RIGHT, RED)
+	_sign("dance", "LOUNGE", w3(-5.0, 2.72, 0.4) + Vector3(0.04, 0, 0), Vector3.RIGHT, PURPLE)
 
 
 # A neon strip round a zone's walls at height y (broken where a doorway is taller than it).
@@ -827,24 +884,27 @@ func _spot(zone: String, pos: Vector3, target: Vector3, col: Color, energy: floa
 # A counter (the bar, the cashier's, the DJ's): a black planked body, a veneer top overhanging the side customers stand at (`front`), a neon
 # strip under that lip and a chrome foot rail along it.
 func _counter(zone: String, x0: float, z0: float, x1: float, z1: float, height: float, front: Vector2, col: Color) -> void:
+	# x0..z1 is its place on the plan: it is as long as that makes it in the world, but as deep, and as high, as a counter is
 	var body := height - 0.05
-	var c := Vector3((x0 + x1) * 0.5, 0.0, (z0 + z1) * 0.5)
+	var mid := wv((x0 + x1) * 0.5, (z0 + z1) * 0.5)
+	var c := Vector3(mid.x, 0.0, mid.y)
 	var f3 := Vector3(front.x, 0.0, front.y)
 	var across := f3.abs()
 	var along := Vector3(across.z, 0.0, across.x)
-	var length := (x1 - x0) if along.x > 0.5 else (z1 - z0)
+	var length := ((x1 - x0) if along.x > 0.5 else (z1 - z0)) * SCALE
 	var depth := (z1 - z0) if along.x > 0.5 else (x1 - x0)
-	_box(_b(zone, "planks"), c + Vector3(0, body * 0.5, 0), Vector3(x1 - x0, body, z1 - z0), _tile("planks"))
+	var footprint := along * length + across * depth
+	_box(_b(zone, "planks"), c + Vector3(0, body * 0.5, 0), footprint + Vector3(0, body, 0), _tile("planks"))
 	_box(_b(zone, "veneer"), c + Vector3(0, height - 0.025, 0) + f3 * 0.04, along * (length + 0.04) + across * (depth + 0.08) + Vector3(0, 0.05, 0), _tile("veneer"))
 	var face := c + f3 * depth * 0.5
 	_glow(zone, face + f3 * 0.02 + Vector3(0, body - 0.03, 0) - along * length * 0.5, face + f3 * 0.02 + Vector3(0, body - 0.03, 0) + along * length * 0.5, col, 0.025)
 	var rail := face + f3 * 0.2 + Vector3(0, 0.22, 0)
 	_cyl(_b(zone, "chrome"), rail - along * length * 0.47, rail + along * length * 0.47, 0.024, 1.0, 10, true)
-	_solid(c + Vector3(0, height * 0.5, 0), Vector3(x1 - x0, height, z1 - z0))
+	_solid(c + Vector3(0, height * 0.5, 0), footprint + Vector3(0, height, 0))
 
 
 # A bar stool (club_stool: a leather seat on a chrome post with a foot ring and a round foot, 0.76 m to the seat). Lower ones are the same
-# stool made smaller.
+# stool made smaller. `at` is a place in the world (like all the furniture's, below: only _counter and _platform take the plan).
 func _stool(zone: String, at: Vector2, seat := 0.76) -> void:
 	_seat(zone, "club_stool", Transform3D(Basis.from_scale(Vector3.ONE * (seat / 0.76)), Vector3(at.x, 0.0, at.y)))
 	_solid(Vector3(at.x, seat * 0.5, at.y), Vector3(0.36, seat, 0.36))
@@ -861,15 +921,19 @@ func _table(zone: String, at: Vector2, radius: float, height: float) -> void:
 
 # A raised platform (the stage, the runway): blocks you at its edge, and is walked on once you are up the steps. Glowing along `edges`
 # ([from, to] pairs of points on its top, at the outside of the edge).
-func _platform(zone: String, x0: float, z0: float, x1: float, z1: float, edges: Array) -> void:
+func _platform(zone: String, px0: float, pz0: float, px1: float, pz1: float, edges: Array) -> void:
+	var x0 := wx(px0)         # the plan's place for it, in the world (it is no higher than a stage is)
+	var z0 := wz(pz0)
+	var x1 := wx(px1)
+	var z1 := wz(pz1)
 	var c := Vector3((x0 + x1) * 0.5, 0.0, (z0 + z1) * 0.5)
 	_box(_b(zone, "planks"), c + Vector3(0, (STAGE_H - 0.04) * 0.5, 0), Vector3(x1 - x0, STAGE_H - 0.04, z1 - z0), _tile("planks"))
 	_box(_b(zone, "veneer"), c + Vector3(0, STAGE_H - 0.02, 0), Vector3(x1 - x0, 0.04, z1 - z0), _tile("veneer"))
 	_solid(c + Vector3(0, 0.175, 0), Vector3(x1 - x0, 0.35, z1 - z0))
 	_solid(c + Vector3(0, STAGE_H - 0.05, 0), Vector3(x1 - x0, 0.1, z1 - z0), KillRoom.WALKABLE)
 	for e in edges:
-		var a: Vector2 = e[0]
-		var b: Vector2 = e[1]
+		var a := wv(e[0].x, e[0].y)
+		var b := wv(e[1].x, e[1].y)
 		_glow(zone, Vector3(a.x, STAGE_H - 0.03, a.y), Vector3(b.x, STAGE_H - 0.03, b.y), PINK)
 
 
@@ -883,10 +947,14 @@ func _pole(zone: String, at: Vector2, base: float, top: float) -> void:
 	_solid(Vector3(at.x, base + 1.0, at.y), Vector3(0.06, 2.0, 0.06))
 
 
-# A booth against the south wall (club_booth, 3.0 m wide and 1.8 m deep: a U of leather benches with high backs round a black table), with a
-# purple glow along the foot of the seats. The model is stretched to the space if it is not that size.
-func _booth(zone: String, x0: float, x1: float, z0: float, z1: float) -> void:
-	_seat(zone, "club_booth", Transform3D(Basis.from_scale(Vector3((x1 - x0) / 3.0, 1.0, (z1 - z0) / 1.8)), Vector3((x0 + x1) * 0.5, 0.0, (z0 + z1) * 0.5)))
+# A booth against a wall (club_booth, 3.0 m wide and 1.8 m deep: a U of leather benches with high backs round a black table), centred on
+# (cx, cz), with a purple glow along the foot of the seats.
+func _booth(zone: String, cx: float, cz: float) -> void:
+	var x0 := cx - 1.5
+	var x1 := cx + 1.5
+	var z0 := cz - 0.9
+	var z1 := cz + 0.9
+	_seat(zone, "club_booth", Transform3D(Basis.IDENTITY, Vector3(cx, 0.0, cz)))
 	var seat_d := 0.55
 	var back_h := 1.15
 	_solid(Vector3((x0 + x1) * 0.5, back_h * 0.5, z1 - seat_d * 0.5), Vector3(x1 - x0, back_h, seat_d))
@@ -950,7 +1018,7 @@ static func _bounds(model: Node3D) -> AABB:
 # door, so the stairwell sees little of the club and the club none of the stairwell.
 func _build_foyer() -> void:
 	_perimeter("foyer", 2.85, PINK)
-	_omni("foyer", Vector3(10.4, 2.6, -8.0), PINK, 1.6, 4.8)
+	_omni("foyer", w3(10.4, 2.6, -8.0), PINK, 1.6, 4.8)
 
 
 # ---- the entrance -----------------------------------------------------------------------------------------------------------------------
@@ -961,12 +1029,12 @@ func _build_foyer() -> void:
 func _build_entry() -> void:
 	var zone := "entry"
 	_counter(zone, 7.5, 3.9, 8.1, 5.9, 1.1, Vector2(-1, 0), CYAN)
-	_sign(zone, "ADMISSION", Vector3(9.16, 2.3, 4.9), Vector3.LEFT, CYAN)
+	_sign(zone, "ADMISSION", w3(9.2, 2.3, 4.9) - Vector3(0.04, 0, 0), Vector3.LEFT, CYAN)
 	# the door to the outside, in the south wall, between neon posts: two black steel leaves with a chrome push bar on each
-	var dz := ENTRY_Z1 - 0.04
-	var dx0 := 5.3
-	var dx1 := 6.7
-	var mid := (dx0 + dx1) * 0.5
+	var dz := wz(ENTRY_Z1) - 0.04
+	var mid := wx(6.0)                    # straight across from the doorway from the hall (a door is a door's width whatever the room)
+	var dx0 := mid - 0.7
+	var dx1 := mid + 0.7
 	var gear := _b(zone, "gear")
 	for leaf in [[dx0, mid - 0.01], [mid + 0.01, dx1]]:
 		_box(gear, Vector3((leaf[0] + leaf[1]) * 0.5, 1.15, dz), Vector3(leaf[1] - leaf[0], 2.3, 0.06), 1.0)
@@ -978,7 +1046,7 @@ func _build_entry() -> void:
 	_glow(zone, Vector3(dx1 + 0.03, 0.0, dz - 0.04), Vector3(dx1 + 0.03, 2.35, dz - 0.04), CYAN)
 	_glow(zone, Vector3(dx0 - 0.03, 2.35, dz - 0.04), Vector3(dx1 + 0.03, 2.35, dz - 0.04), CYAN)
 	_perimeter(zone, 2.85, CYAN)
-	_omni(zone, Vector3(7.0, 2.6, 5.0), CYAN, 1.4, 4.5)
+	_omni(zone, w3(7.0, 2.6, 5.0), CYAN, 1.4, 4.5)
 
 
 # ---- the main hall: the stage end --------------------------------------------------------------------------------------------------
@@ -988,48 +1056,53 @@ func _build_entry() -> void:
 func _build_stage() -> void:
 	var zone := "stage"
 	var h := STAGE_H
-	# the main stage, x -1.5..4.5, from the north wall to z -8.2; the runway x 0.85..2.15 to z -5.6; the round end, centre (1.5, -4.6)
+	# the main stage, x -1.5..4.5, from the north wall to z -8.2; the runway x 0.85..2.15 to z -5.6; the round end, centre (1.5, -4.6) (the plan)
 	_platform(zone, -1.5, NORTH, 4.5, -8.2, [
 		[Vector2(-1.52, NORTH), Vector2(-1.52, -8.22)], [Vector2(4.52, NORTH), Vector2(4.52, -8.22)],
 		[Vector2(-1.52, -8.22), Vector2(0.85, -8.22)], [Vector2(2.15, -8.22), Vector2(4.52, -8.22)]])
 	_platform(zone, 0.85, -8.2, 2.15, -5.6, [[Vector2(0.83, -8.2), Vector2(0.83, -5.67)], [Vector2(2.17, -8.2), Vector2(2.17, -5.67)]])
-	var round_c := Vector3(1.5, 0.0, -4.6)
-	var r := 1.25
+	var rc := wv(1.5, -4.6)
+	var round_c := Vector3(rc.x, 0.0, rc.y)
+	var r := 1.25 * SCALE
 	_cyl(_b(zone, "planks"), round_c, round_c + Vector3(0, h - 0.04, 0), r, _tile("planks"), 32, false)
 	_cyl(_b(zone, "veneer"), round_c + Vector3(0, h - 0.04, 0), round_c + Vector3(0, h, 0), r, _tile("veneer"), 32, true)
 	_cyl(_b(zone, "neon"), round_c + Vector3(0, h - 0.045, 0), round_c + Vector3(0, h - 0.015, 0), r + 0.012, 1.0, 32, false, -1.0, PINK)
 	_solid_cyl(round_c + Vector3(0, 0.175, 0), r, 0.35)
 	_solid_cyl(round_c + Vector3(0, h - 0.05, 0), r, 0.1, KillRoom.WALKABLE)
-	# steps up at the west end of the stage, with glowing nosings
+	# steps up at the west end of the stage (a step is a step: 15 cm up, 28 cm along), with glowing nosings
+	var stage_w := wx(-1.5)
+	var step_z := wz(-9.3)
 	for i in 3:
 		var top := 0.15 * (i + 1)
-		var sx := -2.34 + 0.28 * i
-		_box(_b(zone, "planks"), Vector3(sx + 0.14, top * 0.5, -9.3), Vector3(0.28, top, 1.2), _tile("planks"))
-		_glow(zone, Vector3(sx - 0.01, top - 0.015, -9.9), Vector3(sx - 0.01, top - 0.015, -8.7), PINK, 0.02)
-		_solid(Vector3(sx + 0.14, top - 0.05, -9.3), Vector3(0.28, 0.1, 1.2), KillRoom.WALKABLE)
+		var sx := stage_w - 0.84 + 0.28 * i
+		_box(_b(zone, "planks"), Vector3(sx + 0.14, top * 0.5, step_z), Vector3(0.28, top, 1.2), _tile("planks"))
+		_glow(zone, Vector3(sx - 0.01, top - 0.015, step_z - 0.6), Vector3(sx - 0.01, top - 0.015, step_z + 0.6), PINK, 0.02)
+		_solid(Vector3(sx + 0.14, top - 0.05, step_z), Vector3(0.28, 0.1, 1.2), KillRoom.WALKABLE)
 	# the poles
-	_pole(zone, Vector2(0.0, -9.5), h, HALL_H)
-	_pole(zone, Vector2(3.0, -9.5), h, HALL_H)
+	_pole(zone, wv(0.0, -9.5), h, HALL_H)
+	_pole(zone, wv(3.0, -9.5), h, HALL_H)
 	_pole(zone, Vector2(round_c.x, round_c.z), h, HALL_H)
 	# the curtain behind the stage
-	_folds(_b(zone, "velvet"), Vector2(-1.5, NORTH + 0.04), Vector2(4.5, NORTH + 0.04), Vector2(0, 1), h, 4.9, 0.12, 30, _tile("velvet"))
-	_glow(zone, Vector3(-1.5, 4.95, NORTH + 0.2), Vector3(4.5, 4.95, NORTH + 0.2), PINK, 0.04)
-	# seats round the round end
+	_folds(_b(zone, "velvet"), wv(-1.5, NORTH) + Vector2(0, 0.04), wv(4.5, NORTH) + Vector2(0, 0.04), Vector2(0, 1), h, 4.9, 0.12, roundi(30 * SCALE), _tile("velvet"))
+	_glow(zone, Vector3(wx(-1.5), 4.95, wz(NORTH) + 0.2), Vector3(wx(4.5), 4.95, wz(NORTH) + 0.2), PINK, 0.04)
+	# seats round the round end, half a metre out from it
 	for i in 7:
 		var a := deg_to_rad(-100.0 + 200.0 / 6.0 * i)
-		_stool(zone, Vector2(round_c.x + sin(a) * 1.75, round_c.z + cos(a) * 1.75), 0.66)
+		_stool(zone, Vector2(round_c.x + sin(a) * (r + 0.5), round_c.z + cos(a) * (r + 0.5)), 0.66)
 	# sofas facing the stage along the west wall, each with a low table; high tables to the east
 	for sz in [-9.6, -7.2]:
-		_prop(zone, "sofa_02", Vector2(-4.45, sz), 90.0)
-		_table(zone, Vector2(-3.4, sz), 0.32, 0.46)
-	for at in [Vector2(6.2, -9.4), Vector2(6.6, -4.4)]:
+		var sofa := wv(-5.0, sz) + Vector2(0.55, 0)
+		_prop(zone, "sofa_02", sofa, 90.0)
+		_table(zone, sofa + Vector2(1.05, 0), 0.32, 0.46)
+	for plan_at in [Vector2(6.2, -9.4), Vector2(6.6, -4.4)]:
+		var at := wv(plan_at.x, plan_at.y)
 		_table(zone, at, 0.32, 1.05)
 		_stool(zone, at + Vector2(-0.55, 0.15))
 		_stool(zone, at + Vector2(0.5, 0.25))
 	_perimeter(zone, 3.2, PINK)
 	# light: one spot on the main stage, one on the round end
-	_stage_spots.append(_spot(zone, Vector3(1.5, 5.2, -6.2), Vector3(1.5, h, -9.4), PINK, 5.0, 9.0, 42.0))
-	_stage_spots.append(_spot(zone, Vector3(1.5, 5.2, -3.2), Vector3(1.5, h + 0.8, -4.6), PURPLE, 3.2, 7.5, 24.0))
+	_stage_spots.append(_spot(zone, w3(1.5, 5.2, -6.2), w3(1.5, h, -9.4), PINK, 5.0, 9.0, 42.0))
+	_stage_spots.append(_spot(zone, Vector3(round_c.x, 5.2, wz(-3.2)), round_c + Vector3(0, h + 0.8, 0), PURPLE, 3.2, 7.5, 24.0))
 
 
 # ---- the main hall: the dance floor end ----------------------------------------------------------------------------------------------
@@ -1040,21 +1113,23 @@ func _build_dance_floor() -> void:
 	var zone := "dance"
 	var node: Node3D = _zones[zone]
 	# the LED floor: 0.5 m panels, a centimetre proud of the floor
-	_quad(_b(zone, "led"), Vector3(-1.5, 0.012, -2.4), Vector3(4.5, 0.012, -2.4), Vector3(4.5, 0.012, 1.6), Vector3(-1.5, 0.012, 1.6), 0.5)
-	# the truss over it, hung from the ceiling, with a cross-member down the middle
+	_quad(_b(zone, "led"), Vector3(wx(-1.5), 0.012, wz(-2.4)), Vector3(wx(4.5), 0.012, wz(-2.4)), Vector3(wx(4.5), 0.012, wz(1.6)), Vector3(wx(-1.5), 0.012, wz(1.6)), 0.5)
+	# the truss over it, hung from the ceiling, with a cross-member down the middle (as long as the floor, as thick as truss is)
 	var gear := _b(zone, "gear")
 	var ty := 4.6
+	var tx := wx(1.5)
+	var tz := wz(-0.4)
 	for zz in [-2.4, 1.6]:
-		_box(gear, Vector3(1.5, ty, zz), Vector3(6.2, 0.22, 0.22), 1.0)
+		_box(gear, Vector3(tx, ty, wz(zz)), Vector3(6.2 * SCALE, 0.22, 0.22), 1.0)
 	for xx in [-1.5, 4.5]:
-		_box(gear, Vector3(xx, ty, -0.4), Vector3(0.22, 0.22, 4.0), 1.0)
-	_box(gear, Vector3(1.5, ty, -0.4), Vector3(6.0, 0.18, 0.18), 1.0)
+		_box(gear, Vector3(wx(xx), ty, tz), Vector3(0.22, 0.22, 4.0 * SCALE), 1.0)
+	_box(gear, Vector3(tx, ty, tz), Vector3(6.0 * SCALE, 0.18, 0.18), 1.0)
 	for xx in [-1.5, 4.5]:
 		for zz in [-2.4, 1.6]:
-			_cyl(_b(zone, "chrome"), Vector3(xx, ty + 0.11, zz), Vector3(xx, HALL_H, zz), 0.015, 1.0, 6, false)
+			_cyl(_b(zone, "chrome"), Vector3(wx(xx), ty + 0.11, wz(zz)), Vector3(wx(xx), HALL_H, wz(zz)), 0.015, 1.0, 6, false)
 	# the strobe in the middle of the truss, and its light (shown only for the frame of a flash)
 	var strobe_b := Batch.new(_materials["gear"])
-	_box(strobe_b, Vector3(1.5, ty - 0.17, -0.4), Vector3(0.5, 0.16, 0.25), 1.0)
+	_box(strobe_b, Vector3(tx, ty - 0.17, tz), Vector3(0.5, 0.16, 0.25), 1.0)
 	var housing := MeshInstance3D.new()
 	housing.mesh = _commit(strobe_b)
 	housing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1063,33 +1138,38 @@ func _build_dance_floor() -> void:
 	_strobe_glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_strobe_glow.albedo_color = Color(0.06, 0.06, 0.07)
 	var panel_b := Batch.new(_strobe_glow)
-	_box(panel_b, Vector3(1.5, ty - 0.255, -0.4), Vector3(0.44, 0.012, 0.19), 1.0)
+	_box(panel_b, Vector3(tx, ty - 0.255, tz), Vector3(0.44, 0.012, 0.19), 1.0)
 	var panel := MeshInstance3D.new()
 	panel.mesh = _commit(panel_b)
 	panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.add_child(panel)
-	_strobe = _omni(zone, Vector3(1.5, ty - 0.6, -0.4), Color(0.95, 0.97, 1.0), 6.0, 10.0)
+	_strobe = _omni(zone, Vector3(tx, ty - 0.6, tz), Color(0.95, 0.97, 1.0), 6.0, 10.0)
 	_strobe.light_cull_mask |= zone_layer("stage")          # the flash lights the whole hall
 	_strobe.visible = false
 	# two moving heads on the truss, sweeping beams across the floor
-	_mover(Vector3(0.0, ty - 0.11, -0.4), -90.0, CYAN, 0.0)
-	_mover(Vector3(3.0, ty - 0.11, -0.4), 90.0, PINK, 2.1)
+	_mover(Vector3(wx(0.0), ty - 0.11, tz), -90.0, CYAN, 0.0)
+	_mover(Vector3(wx(3.0), ty - 0.11, tz), 90.0, PINK, 2.1)
 	# the DJ's booth, its gear, and the LED wall behind
 	_counter(zone, 0.3, 1.9, 2.7, 2.45, 1.05, Vector2(0, -1), CYAN)
-	for dx in [0.85, 2.15]:
-		_cyl(gear, Vector3(dx, 1.05, 2.15), Vector3(dx, 1.09, 2.15), 0.17, 1.0, 20, true)
-		_cyl(_b(zone, "neon"), Vector3(dx, 1.085, 2.15), Vector3(dx, 1.095, 2.15), 0.172, 1.0, 20, false, -1.0, CYAN)
-	_box(gear, Vector3(1.5, 1.09, 2.17), Vector3(0.36, 0.08, 0.32), 1.0)
+	var dj := wv(1.5, 2.175)
+	for dx in [-0.65, 0.65]:
+		_cyl(gear, Vector3(dj.x + dx, 1.05, dj.y), Vector3(dj.x + dx, 1.09, dj.y), 0.17, 1.0, 20, true)
+		_cyl(_b(zone, "neon"), Vector3(dj.x + dx, 1.085, dj.y), Vector3(dj.x + dx, 1.095, dj.y), 0.172, 1.0, 20, false, -1.0, CYAN)
+	_box(gear, Vector3(dj.x, 1.09, dj.y), Vector3(0.36, 0.08, 0.32), 1.0)
 	for i in 4:
-		_box(_b(zone, "neon"), Vector3(1.38 + 0.08 * i, 1.135, 2.07), Vector3(0.03, 0.012, 0.03), 1.0, PINK if i % 2 == 0 else CYAN)
-	_quad(_b(zone, "ledwall"), Vector3(3.5, 4.1, SOUTH - 0.03), Vector3(-0.5, 4.1, SOUTH - 0.03), Vector3(-0.5, 1.3, SOUTH - 0.03), Vector3(3.5, 1.3, SOUTH - 0.03), 0.25)
-	for sx in [-1.1, 4.1]:
-		_box(gear, Vector3(sx, 0.8, 2.6), Vector3(0.7, 1.6, 0.6), 1.0)
-		_cyl(_b(zone, "neon"), Vector3(sx, 0.55, 2.3), Vector3(sx, 0.55, 2.295), 0.24, 1.0, 20, true, -1.0, Color(0.04, 0.25, 0.3))
-		_cyl(_b(zone, "neon"), Vector3(sx, 1.2, 2.3), Vector3(sx, 1.2, 2.295), 0.14, 1.0, 16, true, -1.0, Color(0.04, 0.25, 0.3))
-		_solid(Vector3(sx, 0.8, 2.6), Vector3(0.7, 1.6, 0.6))
+		_box(_b(zone, "neon"), Vector3(dj.x - 0.12 + 0.08 * i, 1.135, dj.y - 0.1), Vector3(0.03, 0.012, 0.03), 1.0, PINK if i % 2 == 0 else CYAN)
+	var wall_z := wz(SOUTH) - 0.03
+	_quad(_b(zone, "ledwall"), Vector3(wx(3.5), 4.1, wall_z), Vector3(wx(-0.5), 4.1, wall_z), Vector3(wx(-0.5), 1.3, wall_z), Vector3(wx(3.5), 1.3, wall_z), 0.25)
+	# a speaker stack either side, against the south wall
+	var spk_z := wz(SOUTH) - 0.4
+	for sx in [wx(-1.1), wx(4.1)]:
+		_box(gear, Vector3(sx, 0.8, spk_z), Vector3(0.7, 1.6, 0.6), 1.0)
+		_cyl(_b(zone, "neon"), Vector3(sx, 0.55, spk_z - 0.3), Vector3(sx, 0.55, spk_z - 0.305), 0.24, 1.0, 20, true, -1.0, Color(0.04, 0.25, 0.3))
+		_cyl(_b(zone, "neon"), Vector3(sx, 1.2, spk_z - 0.3), Vector3(sx, 1.2, spk_z - 0.305), 0.14, 1.0, 16, true, -1.0, Color(0.04, 0.25, 0.3))
+		_solid(Vector3(sx, 0.8, spk_z), Vector3(0.7, 1.6, 0.6))
 	# high tables between the floor and the bar
-	for at in [Vector2(6.4, -1.6), Vector2(6.4, -0.1)]:
+	for plan_at in [Vector2(6.4, -1.6), Vector2(6.4, -0.1)]:
+		var at := wv(plan_at.x, plan_at.y)
 		_table(zone, at, 0.32, 1.05)
 		_stool(zone, at + Vector2(-0.5, 0.3))
 		_stool(zone, at + Vector2(0.45, -0.35))
@@ -1173,23 +1253,26 @@ static func _cone(length: float, angle: float, material: Material, sides := 16) 
 func _build_bar() -> void:
 	var zone := "bar"
 	_counter(zone, 10.7, -4.4, 11.35, 2.3, 1.1, Vector2(-1, 0), AMBER)
-	var z := -3.9
-	while z < 2.1:
-		_stool(zone, Vector2(10.2, z))
+	var counter_x := wx(11.025)             # the middle of the counter; it is 0.65 deep
+	var stool_x := counter_x - 0.325 - 0.5
+	var z := wz(-3.9)
+	while z < wz(2.1):
+		_stool(zone, Vector2(stool_x, z))
 		z += 0.8
-	# the back bar: a low cupboard, then lit shelves of bottles up the wall
+	# the back bar along the east wall: a low cupboard, then lit shelves of bottles up the wall
 	var vt := _tile("veneer")
-	_box(_b(zone, "planks"), Vector3(13.25, 0.47, -1.05), Vector3(0.5, 0.94, 6.3), _tile("planks"))
-	_box(_b(zone, "veneer"), Vector3(13.22, 0.96, -1.05), Vector3(0.56, 0.04, 6.3), vt)
-	_solid(Vector3(13.25, 0.5, -1.05), Vector3(0.5, 1.0, 6.3))
-	_quad(_b(zone, "neon"), Vector3(EAST - 0.01, 2.55, -4.1), Vector3(EAST - 0.01, 2.55, 2.0), Vector3(EAST - 0.01, 1.05, 2.0), Vector3(EAST - 0.01, 1.05, -4.1),
+	var back_z := wz(-1.05)
+	_box(_b(zone, "planks"), Vector3(13.25, 0.47, back_z), Vector3(0.5, 0.94, 6.3 * SCALE), _tile("planks"))
+	_box(_b(zone, "veneer"), Vector3(13.22, 0.96, back_z), Vector3(0.56, 0.04, 6.3 * SCALE), vt)
+	_solid(Vector3(13.25, 0.5, back_z), Vector3(0.5, 1.0, 6.3 * SCALE))
+	_quad(_b(zone, "neon"), Vector3(EAST - 0.01, 2.55, wz(-4.1)), Vector3(EAST - 0.01, 2.55, wz(2.0)), Vector3(EAST - 0.01, 1.05, wz(2.0)), Vector3(EAST - 0.01, 1.05, wz(-4.1)),
 		1.0, Vector2.ZERO, 0.0, "", "", Color(0.45, 0.2, 0.05))
 	var bottle_cols := [Color(0.9, 0.55, 0.15), Color(0.25, 0.6, 0.2), Color(0.7, 0.75, 0.8), Color(0.55, 0.12, 0.1), Color(0.95, 0.8, 0.35)]
 	var i := 0
 	for y in [1.4, 1.9, 2.4]:
-		_box(_b(zone, "veneer"), Vector3(13.33, y - 0.02, -1.05), Vector3(0.32, 0.03, 6.1), vt)
-		var bz := -3.9
-		while bz < 1.85:
+		_box(_b(zone, "veneer"), Vector3(13.33, y - 0.02, back_z), Vector3(0.32, 0.03, 6.1 * SCALE), vt)
+		var bz := wz(-3.9)
+		while bz < wz(1.85):
 			var tall := 0.24 + 0.06 * ((i * 7) % 3)
 			var col: Color = bottle_cols[(i * 3) % bottle_cols.size()]
 			_cyl(_b(zone, "neon"), Vector3(13.33, y, bz), Vector3(13.33, y + tall * 0.7, bz), 0.035, 1.0, 8, false, -1.0, col * 0.6)
@@ -1198,15 +1281,16 @@ func _build_bar() -> void:
 			i += 1
 	# pendant lamps over the counter: two of them light
 	for pz in [-3.1, -0.6, 1.9]:
-		var p := Vector3(11.0, 2.35, pz)
+		var p := Vector3(counter_x, 2.35, wz(pz))
 		_cyl(_b(zone, "chrome"), p + Vector3(0, 0.12, 0), Vector3(p.x, 3.2, p.z), 0.006, 1.0, 6, false)
 		_cyl(_b(zone, "gear"), p, p + Vector3(0, 0.14, 0), 0.16, 1.0, 16, false, 0.05)
 		_cyl(_b(zone, "neon"), p + Vector3(0, 0.005, 0), p + Vector3(0, 0.006, 0), 0.15, 1.0, 16, true, -1.0, AMBER)
-	_omni(zone, Vector3(11.0, 2.1, -2.4), AMBER, 1.5, 4.5)
-	_omni(zone, Vector3(11.0, 2.1, 1.2), AMBER, 1.5, 4.5)
+	_omni(zone, Vector3(counter_x, 2.1, wz(-2.4)), AMBER, 1.5, 4.5)
+	_omni(zone, Vector3(counter_x, 2.1, wz(1.2)), AMBER, 1.5, 4.5)
 	# high tables by the far walls
-	_table(zone, Vector2(8.9, 2.3), 0.32, 1.05)
-	_stool(zone, Vector2(9.45, 2.45))
+	var corner := wv(8.9, 2.3)
+	_table(zone, corner, 0.32, 1.05)
+	_stool(zone, corner + Vector2(0.55, 0.15))
 	_perimeter(zone, 2.95, AMBER)
 
 
@@ -1215,21 +1299,23 @@ func _build_bar() -> void:
 func _build_vip() -> void:
 	# the corridor: velvet walls, a red glow along the foot of both walls, numbers over the doors
 	_perimeter("vip", 0.05, RED, 0.02)
-	_omni("vip", Vector3(-10.8, 2.5, -4.4), RED, 0.8, 6.5)
+	_omni("vip", w3(-10.8, 2.5, -4.4), RED, 0.8, 6.5)
 	var rooms := [["room1", -14.6], ["room2", -10.8], ["room3", -7.0]]
+	var door_z := wz(-5.2)                  # the wall the doors are in
 	for k in rooms.size():
 		var zone: String = rooms[k][0]
-		var dx: float = rooms[k][1]
-		var z: Array = ZONES[zone]
+		var dx := wx(rooms[k][1])           # the middle of the room's door
+		var z: Array = zones_w[zone]
 		var cx: float = (z[0] + z[2]) * 0.5
-		_sign("vip", str(k + 1), Vector3(dx, 2.6, -5.18), Vector3.BACK, ROSE)
+		var back := wz(NORTH)
+		_sign("vip", str(k + 1), Vector3(dx, 2.6, door_z + 0.02), Vector3.BACK, ROSE)
 		# a sofa against the back wall with a little table at its side, a glow behind it, a curtain drawn back from the door
-		_prop(zone, "sofa_02", Vector2(cx, NORTH + 0.52), 0.0)
-		_table(zone, Vector2(cx + 1.35, NORTH + 0.45), 0.24, 0.5)
-		_glow(zone, Vector3(cx - 1.4, 1.25, NORTH + 0.03), Vector3(cx + 1.4, 1.25, NORTH + 0.03), PURPLE)
-		_folds(_b(zone, "velvet"), Vector2(dx - 1.15, -5.27), Vector2(dx - 0.45, -5.27), Vector2(0, -1), 0.0, 2.35, 0.1, 6, _tile("velvet"))
-		_cyl(_b(zone, "chrome"), Vector3(dx - 1.25, 2.38, -5.3), Vector3(dx + 0.7, 2.38, -5.3), 0.012, 1.0, 6, true)
-		_omni(zone, Vector3(cx, 2.4, -9.3), ROSE, 1.5, 4.5)
+		_prop(zone, "sofa_02", Vector2(cx, back + 0.52), 0.0)
+		_table(zone, Vector2(cx + 1.35, back + 0.45), 0.24, 0.5)
+		_glow(zone, Vector3(cx - 1.4, 1.25, back + 0.03), Vector3(cx + 1.4, 1.25, back + 0.03), PURPLE)
+		_folds(_b(zone, "velvet"), Vector2(dx - 1.15, door_z - 0.07), Vector2(dx - 0.45, door_z - 0.07), Vector2(0, -1), 0.0, 2.35, 0.1, 6, _tile("velvet"))
+		_cyl(_b(zone, "chrome"), Vector3(dx - 1.25, 2.38, door_z - 0.1), Vector3(dx + 0.7, 2.38, door_z - 0.1), 0.012, 1.0, 6, true)
+		_omni(zone, Vector3(cx, 2.4, (back + door_z) * 0.5), ROSE, 1.5, 4.5)
 
 
 # ---- the lounge ------------------------------------------------------------------------------------------------------------------------
@@ -1237,17 +1323,17 @@ func _build_vip() -> void:
 # Booths along the south wall; two groups of sofas facing each other over a low table, a footstool at the end of each.
 func _build_lounge() -> void:
 	var zone := "lounge"
-	for xs in [[-16.2, -13.2], [-12.4, -9.4], [-8.6, -5.6]]:
-		_booth(zone, xs[0], xs[1], 1.2, SOUTH)
-	for cx in [-13.2, -8.4]:
-		var cz := -1.3
-		_prop(zone, "sofa_02", Vector2(cx, cz - 1.3), 0.0)
-		_prop(zone, "sofa_02", Vector2(cx, cz + 1.3), 180.0)
-		_prop(zone, "coffee_table_round_01", Vector2(cx, cz), 0.0)
-		_prop(zone, "Ottoman_01", Vector2(cx - 1.55, cz), 90.0)
+	for plan_x in [-14.7, -10.9, -7.1]:
+		_booth(zone, wx(plan_x), wz(SOUTH) - 0.9)
+	for plan_x in [-13.2, -8.4]:
+		var c := wv(plan_x, -1.3)
+		_prop(zone, "sofa_02", c + Vector2(0, -1.3), 0.0)
+		_prop(zone, "sofa_02", c + Vector2(0, 1.3), 180.0)
+		_prop(zone, "coffee_table_round_01", c, 0.0)
+		_prop(zone, "Ottoman_01", c + Vector2(-1.55, 0), 90.0)
 	_perimeter(zone, 2.95, PURPLE)
-	_omni(zone, Vector3(-13.2, 2.8, -0.6), PURPLE, 1.6, 5.5)
-	_omni(zone, Vector3(-8.4, 2.8, -0.6), Color(1.0, 0.35, 0.6), 1.6, 5.5)
+	_omni(zone, w3(-13.2, 2.8, -0.6), PURPLE, 1.6, 5.5)
+	_omni(zone, w3(-8.4, 2.8, -0.6), Color(1.0, 0.35, 0.6), 1.6, 5.5)
 
 
 # ---- environment -----------------------------------------------------------------------------------------------------------------------
