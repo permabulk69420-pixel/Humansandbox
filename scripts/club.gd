@@ -21,6 +21,11 @@ const ROSE := Color(1.0, 0.25, 0.45)
 const AMBER := Color(1.0, 0.55, 0.15)
 
 # ---- the floor plan, in metres (x and z as in the basement below; heights from the club floor) ------------------------------------------
+# The whole club is drawn at SCALE times the size of the plan below (rooms, doorways, ceilings, furniture, all of it): the plan is in "plan
+# metres" and the Club node scales it, about the stairwell's door, so the stairs still come out at the foyer. One number makes it all bigger.
+const SCALE := 1.3
+const PIVOT_X := KillRoom.HALL_X1         # the wall the stairs' door is in...
+const PIVOT_Z := (KillRoom.STAIR_DOOR_Z0 + KillRoom.STAIR_DOOR_Z1) * 0.5      # ...and the middle of that door
 const FLOOR_Y := KillRoom.STAIR_RISE      # the club floor: the top of the stairs
 const WEST := KillRoom.HALL_X0
 const EAST := KillRoom.HALL_X1            # the wall the door from the stairs is in
@@ -31,7 +36,10 @@ const HALL_H := 5.5
 const DOOR_H := 2.4
 const WALL_SOLID_H := 3.0                 # how high the walls are solid to you
 const STAGE_H := 0.6
-const ENTRY_Z1 := SOUTH + 3.4             # the entrance foyer sticks out of the hall's south wall this far
+const ENTRY_Z1 := SOUTH + 4.0             # the entrance foyer sticks out of the hall's south wall this far
+# the furthest the club reaches in the world (west and north, and south), for the limits on where you can walk
+const WORLD_MIN := Vector2(PIVOT_X + (WEST - PIVOT_X) * SCALE, PIVOT_Z + (NORTH - PIVOT_Z) * SCALE)
+const WORLD_MAX_Z := PIVOT_Z + (ENTRY_Z1 - PIVOT_Z) * SCALE
 
 # name -> [x0, z0, x1, z1, ceiling height, floor material, wall material]
 const ZONES := {
@@ -39,18 +47,20 @@ const ZONES := {
 	"bar": [8.0, -5.6, EAST, SOUTH, 3.2, "rubber", "brick"],
 	"stage": [-5.0, NORTH, 8.0, SPLIT_Z, HALL_H, "rubber", "brick"],
 	"dance": [-5.0, SPLIT_Z, 8.0, SOUTH, HALL_H, "rubber", "brick"],
-	"entry": [5.0, SOUTH, 8.0, ENTRY_Z1, 3.0, "rubber", "brick"],
+	"entry": [5.0, SOUTH, 9.2, ENTRY_Z1, 3.0, "rubber", "brick"],
 	"vip": [WEST, -5.2, -5.0, -3.6, 2.8, "carpet", "velvet"],
 	"room1": [WEST, NORTH, -12.7, -5.2, 2.8, "carpet", "panel"],
 	"room2": [-12.7, NORTH, -8.85, -5.2, 2.8, "carpet", "panel"],
 	"room3": [-8.85, NORTH, -5.0, -5.2, 2.8, "carpet", "panel"],
 	"lounge": [WEST, -3.6, -5.0, SOUTH, 3.2, "carpet", "panel"],
-	# the top of the stairwell: built by the basement, not here, but you look into the club from it
-	"stairs": [EAST, NORTH, KillRoom.STAIR_X1, KillRoom.HALL_ZS, 0.0, "", ""],
+	# the top of the stairwell: built by the basement, not here, but you look into the club from it (here as it is on the plan: the stairwell
+	# is the same size in the world whatever SCALE is, so on the plan it is smaller)
+	"stairs": [EAST, PIVOT_Z - (KillRoom.HALL_ZS - KillRoom.HALL_ZN) * 0.5 / SCALE, EAST + (KillRoom.STAIR_X1 - EAST) / SCALE, PIVOT_Z + (KillRoom.HALL_ZS - KillRoom.HALL_ZN) * 0.5 / SCALE, 0.0, "", ""],
 }
 # the gaps in the walls: [zone, zone, x0, z0, x1, z1, height, neon round it (or null)]
 const DOORWAYS := [
-	["stairs", "foyer", EAST, KillRoom.STAIR_DOOR_Z0, EAST, KillRoom.STAIR_DOOR_Z1, KillRoom.STAIR_DOOR_H, null],
+	# the doorway from the stairs is the size of the stairwell's heavy door in the world, so on the plan it is smaller than SCALE says
+	["stairs", "foyer", EAST, PIVOT_Z - (KillRoom.STAIR_DOOR_Z1 - KillRoom.STAIR_DOOR_Z0) * 0.5 / SCALE, EAST, PIVOT_Z + (KillRoom.STAIR_DOOR_Z1 - KillRoom.STAIR_DOOR_Z0) * 0.5 / SCALE, KillRoom.STAIR_DOOR_H / SCALE, null],
 	["foyer", "stage", 8.0, -7.4, 8.0, -6.0, DOOR_H, PINK],
 	["bar", "stage", 8.0, -4.2, 8.0, SPLIT_Z, 2.8, null],      # the bar is open to the hall along most of its side
 	["bar", "dance", 8.0, SPLIT_Z, 8.0, 1.6, 2.8, null],
@@ -60,7 +70,7 @@ const DOORWAYS := [
 	["vip", "room2", -11.4, -5.2, -10.2, -5.2, DOOR_H, ROSE],
 	["vip", "room3", -7.6, -5.2, -6.4, -5.2, DOOR_H, ROSE],
 	["stage", "dance", -5.0, SPLIT_Z, 8.0, SPLIT_Z, HALL_H, null],
-	["dance", "entry", 6.3, SOUTH, 7.7, SOUTH, DOOR_H, CYAN],
+	["dance", "entry", 5.3, SOUTH, 6.7, SOUTH, DOOR_H, CYAN],
 ]
 # Each zone's meshes are on a render layer of their own (2, 4, 8... in the order above), and each light only lights its own zone (and layer
 # 1: your hands, and whatever you carry). A light that reached into the next room would draw that room's meshes all over again.
@@ -154,7 +164,8 @@ var _flash_on := false
 # Builds the whole club. Safe to run on a worker thread: nothing here touches the scene tree until main.gd adds the finished club to it.
 func build() -> void:
 	name = "Club"
-	position.y = FLOOR_Y
+	position = Vector3(PIVOT_X * (1.0 - SCALE), FLOOR_Y, PIVOT_Z * (1.0 - SCALE))
+	scale = Vector3.ONE * SCALE
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_noise.frequency = 0.45
 	_noise.fractal_octaves = 3
@@ -229,8 +240,9 @@ func _update_strobe() -> void:
 
 # ---- what can be seen from where ------------------------------------------------------------------------------------------------------
 
-# The zone a point (your head) is in, or "" if it is in none of them.
-func zone_at(p: Vector3) -> String:
+# The zone a point in the world (your head) is in, or "" if it is in none of them.
+func zone_at(world_point: Vector3) -> String:
+	var p := to_local(world_point)
 	for zone in ZONES:
 		var z: Array = ZONES[zone]
 		if p.x >= z[0] and p.x <= z[2] and p.z >= z[1] and p.z <= z[3]:
@@ -790,7 +802,7 @@ func _omni(zone: String, pos: Vector3, col: Color, energy: float, reach: float) 
 	light.position = pos
 	light.light_color = col
 	light.light_energy = energy
-	light.omni_range = reach
+	light.omni_range = reach * SCALE          # a light's range is not scaled by the node it is on
 	light.omni_attenuation = 1.2
 	light.light_cull_mask = 1 | zone_layer(zone)
 	(_zones[zone] as Node3D).add_child(light)
@@ -802,7 +814,7 @@ func _spot(zone: String, pos: Vector3, target: Vector3, col: Color, energy: floa
 	light.transform = Transform3D(Basis.looking_at(target - pos), pos)
 	light.light_color = col
 	light.light_energy = energy
-	light.spot_range = reach
+	light.spot_range = reach * SCALE
 	light.spot_angle = angle
 	light.spot_attenuation = 0.9
 	light.light_cull_mask = 1 | zone_layer(zone)
@@ -943,16 +955,17 @@ func _build_foyer() -> void:
 
 # ---- the entrance -----------------------------------------------------------------------------------------------------------------------
 
-# The way in from the street: a small foyer off the south wall of the hall, east of the DJ's booth. A closed steel double door in its far
-# wall (there is no street yet), the admission counter against the east wall, and a doorway on into the hall.
+# The way in from the street: a small foyer off the south wall of the hall, east of the DJ's booth. A closed steel double door in its far wall
+# (there is no street yet) straight across from the doorway into the hall, and the admission counter to the side, out from the east wall with
+# the cashier's room behind it (a metre or more, open at the hall end).
 func _build_entry() -> void:
 	var zone := "entry"
-	_counter(zone, 7.35, 3.9, 7.95, 5.5, 1.1, Vector2(-1, 0), CYAN)
-	_sign(zone, "ADMISSION", Vector3(7.96, 2.3, 4.7), Vector3.LEFT, CYAN)
+	_counter(zone, 7.5, 3.9, 8.1, 5.9, 1.1, Vector2(-1, 0), CYAN)
+	_sign(zone, "ADMISSION", Vector3(9.16, 2.3, 4.9), Vector3.LEFT, CYAN)
 	# the door to the outside, in the south wall, between neon posts: two black steel leaves with a chrome push bar on each
 	var dz := ENTRY_Z1 - 0.04
-	var dx0 := 5.35
-	var dx1 := 6.75
+	var dx0 := 5.3
+	var dx1 := 6.7
 	var mid := (dx0 + dx1) * 0.5
 	var gear := _b(zone, "gear")
 	for leaf in [[dx0, mid - 0.01], [mid + 0.01, dx1]]:
@@ -965,7 +978,7 @@ func _build_entry() -> void:
 	_glow(zone, Vector3(dx1 + 0.03, 0.0, dz - 0.04), Vector3(dx1 + 0.03, 2.35, dz - 0.04), CYAN)
 	_glow(zone, Vector3(dx0 - 0.03, 2.35, dz - 0.04), Vector3(dx1 + 0.03, 2.35, dz - 0.04), CYAN)
 	_perimeter(zone, 2.85, CYAN)
-	_omni(zone, Vector3(6.4, 2.6, 4.7), CYAN, 1.4, 4.5)
+	_omni(zone, Vector3(7.0, 2.6, 5.0), CYAN, 1.4, 4.5)
 
 
 # ---- the main hall: the stage end --------------------------------------------------------------------------------------------------
@@ -1076,7 +1089,7 @@ func _build_dance_floor() -> void:
 		_cyl(_b(zone, "neon"), Vector3(sx, 1.2, 2.3), Vector3(sx, 1.2, 2.295), 0.14, 1.0, 16, true, -1.0, Color(0.04, 0.25, 0.3))
 		_solid(Vector3(sx, 0.8, 2.6), Vector3(0.7, 1.6, 0.6))
 	# high tables between the floor and the bar
-	for at in [Vector2(6.4, -1.6), Vector2(6.4, 1.2)]:
+	for at in [Vector2(6.4, -1.6), Vector2(6.4, -0.1)]:
 		_table(zone, at, 0.32, 1.05)
 		_stool(zone, at + Vector2(-0.5, 0.3))
 		_stool(zone, at + Vector2(0.45, -0.35))
@@ -1114,7 +1127,7 @@ func _mover(pos: Vector3, yaw: float, col: Color, phase: float) -> void:
 	light.position = Vector3(0, 0, -0.13)
 	light.light_color = col
 	light.light_energy = 6.0
-	light.spot_range = 9.0
+	light.spot_range = 9.0 * SCALE
 	light.spot_angle = 14.0
 	light.spot_attenuation = 0.6
 	light.light_cull_mask = 1 | zone_layer("dance")
