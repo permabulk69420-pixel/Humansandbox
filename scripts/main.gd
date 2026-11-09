@@ -22,6 +22,7 @@ const STEP_REACH := 0.45           # how far above your feet the floor is looked
 const STEP_DROP := 0.8             # and how far below your feet
 const BODY_LIFT := 0.15            # it floats this far off the floor, so low things (the drain cover, a threshold) do not stop you
 const EYE_HEIGHT := 1.62           # flat-screen camera height
+const CLUB_IN_THREAD := true       # build the club on a worker thread (false: all at once, on the frame you step into the stairwell)
 
 var vr := false
 var rig: Node3D
@@ -41,6 +42,12 @@ var placed := false
 var resolution_label: Label3D
 var resolution_timer := 0.0
 var overlay_combo_held := false
+# The stairwell is the loading screen between the basement and the club upstairs: the club is built while you are on the stairs, and only
+# one of the two is shown (both, on the landing halfway up, where you can see down one flight and up the other).
+var club: Club
+var level := "basement"            # where you are: see level_cell()
+var _club_building: Club
+var _club_task := -1
 
 
 func _ready() -> void:
@@ -141,6 +148,7 @@ func _process(delta: float) -> void:
 			float(Input.is_key_pressed(KEY_W)) - float(Input.is_key_pressed(KEY_S)))
 		turn = float(Input.is_key_pressed(KEY_E) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_Q) or Input.is_key_pressed(KEY_LEFT))
 	locomote(move, turn, dt)
+	update_levels()
 	if interactions != null:
 		interactions.update(dt)
 	if hands != null:
@@ -163,7 +171,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # Stands her in front of where the player is looking, on the floor, facing them.
 func place_woman() -> void:
-	woman.visible = true
+	woman.visible = woman.process_mode != Node.PROCESS_MODE_DISABLED     # not while she is hidden, with you upstairs
 	if woman.strapped:
 		return                                       # she is strapped to the table: she stays where she is
 	woman.global_transform = placement(camera.global_position, -camera.global_basis.z, rig.global_position.y, WOMAN_DISTANCE)
@@ -197,9 +205,9 @@ func locomote(move: Vector2, turn: float, dt: float) -> void:
 		right.y = 0.0
 		var heading := (forward.normalized() * move.y + right.normalized() * move.x) if forward.length() > 0.01 else Vector3.ZERO
 		rig.global_position += _slide(heading * MOVE_SPEED * dt)
-		# you cannot walk through her, or through the walls
+		# you cannot walk through her (when you are on her floor), or through the walls
 		var away := Vector2(camera.global_position.x - woman.global_position.x, camera.global_position.z - woman.global_position.z)
-		if away.length() < PERSONAL_SPACE:
+		if away.length() < PERSONAL_SPACE and absf(woman.global_position.y - rig.global_position.y) < 2.0:
 			var push := (away.normalized() if away.length() > 0.001 else Vector2.DOWN) * (PERSONAL_SPACE - away.length())
 			rig.global_position += Vector3(push.x, 0.0, push.y)
 		rig.global_position.x = clampf(rig.global_position.x, ROOM_MIN.x, ROOM_MAX.x)
@@ -231,6 +239,74 @@ func _slide(motion: Vector3) -> Vector3:
 		if motion.length() < 0.0005:
 			break
 	return body.global_position - start
+
+
+# ---- the basement, the stairs and the club --------------------------------------------------------------------------------------------
+
+# Where you are, for what to show: "basement" (the room and the hallway), "lower" (the vestibule behind the bottom door and the first
+# flight), "landing" (halfway up, where you can see down the first flight and up the second), "upper" (the second flight and the top
+# landing) or "club". `head` is where your head is, `feet` the height you stand at.
+static func level_cell(head: Vector3, feet: float) -> String:
+	var in_stairwell := head.x > KillRoom.HALL_X1 and head.z > KillRoom.HALL_ZN - 0.5 and head.z < KillRoom.HALL_ZS + 0.5
+	if not in_stairwell:
+		return "club" if feet > KillRoom.STAIR_RISE - 0.6 else "basement"
+	if head.x >= KillRoom.STAIR_LANDING_X0:
+		return "landing"
+	if head.x < KillRoom.STAIR_X0:                                       # the vestibule, or the top landing over it
+		return "upper" if feet > KillRoom.STAIR_RISE * 0.5 else "lower"
+	return "upper" if head.z > (KillRoom.HALL_ZN + KillRoom.HALL_ZS) * 0.5 else "lower"   # the second flight is the south one
+
+
+# Builds the club the first time you step into the stairwell (on a worker thread, so the frame rate never notices) and unlocks the door at
+# the top once it is there; shows the basement or the club, never both unless you are on the landing; and inside the club shows only the
+# rooms you could see from the one you are in.
+func update_levels() -> void:
+	var head := camera.global_position
+	level = level_cell(head, rig.global_position.y)
+	if level != "basement" and club == null and _club_building == null:
+		_start_club()
+	if _club_building != null and (_club_task < 0 or WorkerThreadPool.is_task_completed(_club_task)):
+		_finish_club()
+	var upstairs := level == "upper" or level == "club"
+	room.set_basement_shown(not upstairs)
+	_set_woman_shown(not upstairs)
+	if club != null:
+		club.visible = upstairs or level == "landing"
+		if club.visible:
+			var zone := club.zone_at(head) if level == "club" else "stairs"
+			if zone != "":
+				club.view_from(zone)
+	var env: Environment = club.environment if upstairs and club != null else room.basement_environment
+	if room.world_env.environment != env:
+		room.world_env.environment = env
+
+
+func _start_club() -> void:
+	_club_building = Club.new()
+	if CLUB_IN_THREAD:
+		_club_task = WorkerThreadPool.add_task(_club_building.build, true, "Build the club")
+	else:
+		_club_building.build()
+
+
+func _finish_club() -> void:
+	if _club_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_club_task)
+		_club_task = -1
+	club = _club_building
+	_club_building = null
+	club.visible = false
+	add_child(club)
+	room.stair_door_top.locked = false
+
+
+# She is part of the basement: hidden and paused (her crying too) while you are upstairs.
+func _set_woman_shown(on: bool) -> void:
+	var paused := woman.process_mode == Node.PROCESS_MODE_DISABLED
+	if on != paused:
+		return
+	woman.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
+	woman.visible = on and (placed or not vr)
 
 
 static func placement(camera_position: Vector3, camera_forward: Vector3, floor_y: float, distance: float) -> Transform3D:

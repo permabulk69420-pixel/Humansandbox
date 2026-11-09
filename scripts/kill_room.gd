@@ -85,6 +85,10 @@ var knife: KitchenKnife
 var door: HingedDoor
 var stair_door_bottom: HingedDoor
 var stair_door_top: HingedDoor
+var stairwell: Array[Node] = []        # what the stairwell is made of: it stays when the rest of the basement is hidden (set_basement_shown)
+var world_env: WorldEnvironment
+var basement_environment: Environment
+var _basement_shown := true
 var _materials := {}
 var _batches := {}
 var _noise := FastNoiseLite.new()
@@ -695,6 +699,11 @@ func _build_stairs() -> void:
 	_quad(ceil_b, Vector3(HALL_X1, STAIR_CEIL, HALL_ZS), Vector3(STAIR_X1, STAIR_CEIL, HALL_ZS), Vector3(STAIR_X1, STAIR_CEIL, HALL_ZN), Vector3(HALL_X1, STAIR_CEIL, HALL_ZN), ct, Vector2(HALL_X1, HALL_ZN) / ct, 0.5, "ceiling")
 	# walls, as seen from inside
 	_wall(Vector2(HALL_X1, HALL_ZN), Vector2(STAIR_X1, HALL_ZN), 0.0, STAIR_CEIL, walls)         # north
+	# over the foot of the first flight, at the edge of the top landing: a wall from the vestibule's ceiling up, both faces. It seals the top
+	# of the stairs off from the bottom (the stairwell is the loading screen between the basement and the club: from the top you cannot see
+	# down to the hallway, nor from the bottom up to the club), and it stops you stepping off the landing into the drop over the first flight.
+	_wall(Vector2(STAIR_X0, HALL_ZN), Vector2(STAIR_X0, cz - 0.1), H, STAIR_CEIL, walls)
+	_wall(Vector2(STAIR_X0, cz - 0.1), Vector2(STAIR_X0, HALL_ZN), H, STAIR_CEIL, walls)
 	_wall(Vector2(STAIR_X1, HALL_ZS), Vector2(HALL_X1, HALL_ZS), 0.0, STAIR_CEIL, walls)         # south
 	_wall(Vector2(STAIR_X1, HALL_ZN), Vector2(STAIR_X1, HALL_ZS), 0.0, STAIR_CEIL, walls)         # east, the far end
 	# west: the back of the hallway's end wall, with the bottom doorway; and above it, the top landing's wall with the top doorway
@@ -724,13 +733,18 @@ func _build_stairs() -> void:
 	_walkable(Vector3((HALL_X1 + STAIR_X0) * 0.5, STAIR_RISE - 0.05, cz), Vector3(STAIR_X0 - HALL_X1, 0.1, HALL_ZS - HALL_ZN))     # the top landing
 	var divider := Batch.new(_materials["plaster"])
 	_box(divider, Vector3((STAIR_X0 + STAIR_LANDING_X0) * 0.5, STAIR_CEIL * 0.5, cz), Vector3(STAIR_LANDING_X0 - STAIR_X0, STAIR_CEIL, 0.2), _tile("plaster"))
-	var batches: Array = [floor_b, ceil_b, step_b, divider]
+	# the doors: the bottom one opens; the top one is locked until the club behind it has been built (main.gd)
+	var frames := Batch.new(_materials["steel"])
+	stair_door_bottom = _heavy_door(Vector3(HALL_X1, 0.0, STAIR_DOOR_Z0 + 0.02), false, frames)
+	stair_door_top = _heavy_door(Vector3(HALL_X1, STAIR_RISE, STAIR_DOOR_Z0 + 0.02), true, frames)
+	var batches: Array = [floor_b, ceil_b, step_b, divider, frames]
 	batches.append_array(walls.values())
 	for b in batches:
 		var mi := MeshInstance3D.new()
 		mi.name = "Stairwell"
 		mi.mesh = _commit(b)
 		add_child(mi)
+		stairwell.append(mi)
 	# solid walls and ceiling (the steps are not solid to you: you climb them)
 	var long := STAIR_X1 - HALL_X1
 	var mid_x := (HALL_X1 + STAIR_X1) * 0.5
@@ -744,9 +758,7 @@ func _build_stairs() -> void:
 	_static_box("TopWestNorth", Vector3(HALL_X1, STAIR_RISE + top_h * 0.5, (HALL_ZN - 0.3 + STAIR_DOOR_Z0) * 0.5), Vector3(0.2, top_h, STAIR_DOOR_Z0 - HALL_ZN + 0.3))
 	_static_box("TopWestSouth", Vector3(HALL_X1, STAIR_RISE + top_h * 0.5, (STAIR_DOOR_Z1 + HALL_ZS + 0.3) * 0.5), Vector3(0.2, top_h, HALL_ZS - STAIR_DOOR_Z1 + 0.3))
 	_static_box("TopWestLintel", Vector3(HALL_X1, STAIR_RISE + STAIR_DOOR_H + (top_h - STAIR_DOOR_H) * 0.5, (STAIR_DOOR_Z0 + STAIR_DOOR_Z1) * 0.5), Vector3(0.2, top_h - STAIR_DOOR_H, STAIR_DOOR_Z1 - STAIR_DOOR_Z0))
-	# the doors: the bottom one opens; the top one is locked until there is a club behind it
-	stair_door_bottom = _heavy_door(Vector3(HALL_X1, 0.0, STAIR_DOOR_Z0 + 0.02), false)
-	stair_door_top = _heavy_door(Vector3(HALL_X1, STAIR_RISE, STAIR_DOOR_Z0 + 0.02), true)
+	_static_box("TopLandingEdge", Vector3(STAIR_X0, (H + STAIR_CEIL) * 0.5, (HALL_ZN + cz - 0.1) * 0.5), Vector3(0.2, STAIR_CEIL - H, cz - 0.1 - HALL_ZN))
 	# lights: over the vestibule, over the landing, and over the top
 	for spot in [Vector3(HALL_X1 + 0.7, H - 0.2, cz), Vector3(STAIR_LANDING_X0 + 0.5, STAIR_CEIL - 0.3, cz), Vector3(HALL_X1 + 0.7, STAIR_CEIL - 0.3, cz)]:
 		var fixture := _load_model("caged_hanging_light")
@@ -754,12 +766,15 @@ func _build_stairs() -> void:
 			fixture.position = Vector3(spot.x, spot.y + 0.2, spot.z)
 			add_child(fixture)
 			_set_shadows(fixture, false)
+			stairwell.append(fixture)
 		var lamp := OmniLight3D.new()
 		lamp.position = Vector3(spot.x, spot.y - 0.5, spot.z)
 		lamp.light_color = Color(0.7, 1.0, 0.82)
 		lamp.light_energy = 0.8
 		lamp.omni_range = 5.5
+		lamp.light_cull_mask &= ~Club.LAYERS     # it would shine through the wall into the club's foyer
 		add_child(lamp)
+		stairwell.append(lamp)
 
 
 # A solid slab you can walk on (on its own physics layer, seen by nothing but the climbing ray in main.gd).
@@ -777,8 +792,9 @@ func _walkable(center: Vector3, size: Vector3) -> void:
 
 
 # A heavy steel door in the wall at x = HALL_X1: 1.25 m wide and 2.2 m tall, hinged on its north side, with ribs, hinges and a bar handle on
-# each face. `hinge` is where it turns. Closed, it fills the doorway; the swing is the same grab-the-handle one as the room's door.
-func _heavy_door(hinge: Vector3, locked: bool) -> HingedDoor:
+# each face. `hinge` is where it turns. Closed, it fills the doorway; the swing is the same grab-the-handle one as the room's door. The frame
+# round the doorway goes into `frame`.
+func _heavy_door(hinge: Vector3, locked: bool, frame: Batch) -> HingedDoor:
 	var width := 1.25
 	var tall := 2.2
 	var thick := 0.09
@@ -808,9 +824,9 @@ func _heavy_door(hinge: Vector3, locked: bool) -> HingedDoor:
 	mi.mesh = _commit(steel)
 	leaf.add_child(mi)
 	add_child(leaf)
+	stairwell.append(leaf)
 	_static_box("HeavyDoorSlab", Vector3(-width * 0.5, tall * 0.5, 0.0), Vector3(width - 0.02, tall, thick + 0.04), leaf)
 	# the frame round the doorway
-	var frame := _batch("steel")
 	var jamb_z0 := STAIR_DOOR_Z0 - 0.07
 	var jamb_z1 := STAIR_DOOR_Z1 + 0.07
 	_box(frame, Vector3(HALL_X1, hinge.y + tall * 0.5 + 0.05, jamb_z0), Vector3(0.2, tall + 0.1, 0.14), _tile("steel"))
@@ -835,6 +851,28 @@ func _build_environment() -> void:
 	we.name = "Environment"
 	we.environment = env
 	add_child(we)
+	world_env = we
+	basement_environment = env
+
+
+# Shows or hides the basement (the room, the hallway and everything in them; not the stairwell), and pauses it while it is hidden: the radio
+# stops, and nothing down there costs a frame while you are up in the club. Things you have carried upstairs are left alone.
+func set_basement_shown(on: bool) -> void:
+	if on == _basement_shown:
+		return
+	_basement_shown = on
+	set_process(on)
+	for child in get_children():
+		if child == collision_root or child == props or stairwell.has(child) or not child is Node3D:
+			continue
+		(child as Node3D).visible = on
+	for prop in props.get_children():
+		var p := prop as Node3D
+		var held: bool = "held_by" in p and p.get("held_by") != ""
+		if held or p.global_position.y > STAIR_RISE - 1.0:
+			continue
+		p.visible = on
+		p.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
 
 
 func _build_lights() -> void:
