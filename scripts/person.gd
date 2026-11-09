@@ -15,13 +15,18 @@ var player: AnimationPlayer
 
 
 # Builds the person: the model, and `clip` from its baked clips, looping. Safe to run on a worker thread (the club is built on one).
-func setup(character: String, clip: String) -> void:
-	name = character.capitalize()
+# `outfit` is the same character in other clothes (<character>_<outfit>.glb): the person is built from the character's own model, so the body,
+# hair, boots and every texture are the very same resources, and only the clothes the outfit has (and the character's do not) are taken from
+# the other file, in place of the clothes the outfit lacks.
+func setup(character: String, clip: String, outfit := "") -> void:
+	name = (character if outfit == "" else character + "_" + outfit).capitalize()
 	var packed := load(FOLDER + character + ".glb") as PackedScene
 	assert(packed != null, character + ".glb is missing")
 	model = packed.instantiate()
 	add_child(model)
 	skeleton = model.find_child("Skeleton3D", true, false)
+	if outfit != "":
+		_change_clothes(load(FOLDER + character + "_" + outfit + ".glb") as PackedScene)
 	# the rig sits a little above the floor (and the model with it): stand the feet on it
 	var lift := 0.0
 	var walker: Node = skeleton
@@ -51,6 +56,20 @@ func setup(character: String, clip: String) -> void:
 
 func _on_visibility_changed() -> void:
 	player.active = is_visible_in_tree()
+
+
+func _change_clothes(outfit_scene: PackedScene) -> void:
+	var other := outfit_scene.instantiate()
+	var other_skeleton: Skeleton3D = other.find_child("Skeleton3D", true, false)
+	for mesh in skeleton.get_children():
+		if other_skeleton.get_node_or_null(NodePath(mesh.name)) == null:
+			skeleton.remove_child(mesh)
+			mesh.free()
+	for mesh in other_skeleton.get_children():
+		if skeleton.get_node_or_null(NodePath(mesh.name)) == null:
+			other_skeleton.remove_child(mesh)
+			skeleton.add_child(mesh)
+	other.free()
 
 
 func _animation(character: String, clip: String) -> Animation:

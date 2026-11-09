@@ -26,6 +26,8 @@ const SOURCE_HIPS := "pelvis"
 const SOURCE_FOOT := "foot_l"
 const SOURCE_MIDDLE_FINGER := "middle_01_%s"      # what the source hand points at
 const FPS := 30.0
+const ROUTINE := "Dance_Complex"      # not in the library: made from its Dance_Loop (which has to be baked first), see routine()
+const ROUTINE_SECONDS := 8.0
 
 # a role's name on a Mixamo skeleton (after the importer turns "mixamorig:" into "mixamorig_")
 const MIXAMO_PREFIX := "mixamorig_"
@@ -142,6 +144,10 @@ func run() -> void:
 	var out := {"source": "Quaternius Universal Animation Library (Standard), CC0 1.0 - https://quaternius.com/packs/universalanimationlibrary.html",
 		"fps": FPS, "bones": bones, "clips": {}}
 	for clip_name in args.slice(2):
+		if clip_name == ROUTINE:
+			out.clips[ROUTINE] = routine(out.clips["Dance_Loop"], bones)
+			print("%-14s %2d frames, %.2fs (a routine made of Dance_Loop)" % [ROUTINE, out.clips[ROUTINE].frames, out.clips[ROUTINE].length])
+			continue
 		var anim := player.get_animation(clip_name)
 		if anim == null:
 			push_error("no clip called " + clip_name)
@@ -155,6 +161,66 @@ func run() -> void:
 	file.close()
 	print("wrote ", args[1], " (", FileAccess.get_file_as_bytes(args[1]).size() / 1024, " KB)")
 	quit()
+
+
+# A longer, busier dance made of the library's one: its loop (a second long) goes round for ROUTINE_SECONDS, and on top of it the hips swing and
+# circle, the body rolls in a wave, the arms go up one at a time and then together and wave, the head tilts, and she drops into a squat twice.
+# Every layer repeats within the clip, so it loops without a seam. The turns are about the model's axes (it faces +z, its left is +x): y turns
+# her, z leans her to a side, x tips her forward; an arm raised out to the side is a turn about z (left: +, right: -).
+func routine(base: Dictionary, bones: Array[String]) -> Dictionary:
+	var frames := int(ROUTINE_SECONDS * FPS)
+	var index := {}
+	for k in bones.size():
+		index[bones[k]] = k
+	var rows: Array = []
+	var hips: Array = []
+	for f in frames:
+		var t := float(f) / FPS
+		var u := t / ROUTINE_SECONDS                       # 0..1 round the loop
+		var row: Array = (base.rot[f % int(base.frames)] as Array).duplicate()
+		var turns := {}                                    # role -> a turn to add on top of the clip (model space)
+		var swing := sin(TAU * t / 2.0)                    # side to side, once every two seconds
+		var roll := sin(TAU * t / 4.0)
+		var left_up := _bump(t, 1.0, 3.0) + _bump(t, 6.0, 8.0)
+		var right_up := _bump(t, 3.5, 5.5) + _bump(t, 6.0, 8.0)
+		var squat := _bump(t, 2.0, 3.0) + _bump(t, 6.0, 7.0)
+		# hips: a swing and a roll, counter-turned up the spine, a wave rolling up it, and the head on top
+		turns["Hips"] = Quaternion(Vector3.UP, deg_to_rad(20.0) * swing) * Quaternion(Vector3.BACK, deg_to_rad(7.0) * sin(TAU * t / 2.0 + 1.2))
+		turns["Spine"] = Quaternion(Vector3.UP, deg_to_rad(-10.0) * swing) * Quaternion(Vector3.RIGHT, deg_to_rad(7.0) * sin(TAU * t / 4.0))
+		turns["Chest"] = Quaternion(Vector3.UP, deg_to_rad(-8.0) * swing) * Quaternion(Vector3.RIGHT, deg_to_rad(8.0) * sin(TAU * t / 4.0 - 0.8))
+		turns["UpperChest"] = Quaternion(Vector3.BACK, deg_to_rad(6.0) * roll) * Quaternion(Vector3.RIGHT, deg_to_rad(6.0) * sin(TAU * t / 4.0 - 1.6))
+		turns["Head"] = Quaternion(Vector3.BACK, deg_to_rad(10.0) * sin(TAU * t / 4.0 + 0.6)) * Quaternion(Vector3.UP, deg_to_rad(16.0) * sin(TAU * t / 8.0))
+		# arms: up and out to the side (left, right, both), the forearms waving while they are up, a little loose swing the rest of the time
+		turns["LeftUpperArm"] = Quaternion(Vector3.BACK, deg_to_rad(145.0) * left_up)
+		turns["RightUpperArm"] = Quaternion(Vector3.BACK, deg_to_rad(-145.0) * right_up)
+		turns["LeftLowerArm"] = Quaternion(Vector3.FORWARD, deg_to_rad(28.0) * sin(TAU * t * 2.0) * left_up)
+		turns["RightLowerArm"] = Quaternion(Vector3.BACK, deg_to_rad(28.0) * sin(TAU * t * 2.0 + 1.0) * right_up)
+		# legs: dropping into a squat (thighs forward, knees bent, feet kept flat) with the hips lowered to match
+		turns["LeftUpperLeg"] = Quaternion(Vector3.RIGHT, deg_to_rad(-52.0) * squat)
+		turns["RightUpperLeg"] = Quaternion(Vector3.RIGHT, deg_to_rad(-52.0) * squat)
+		turns["LeftLowerLeg"] = Quaternion(Vector3.RIGHT, deg_to_rad(80.0) * squat)
+		turns["RightLowerLeg"] = Quaternion(Vector3.RIGHT, deg_to_rad(80.0) * squat)
+		turns["LeftFoot"] = Quaternion(Vector3.RIGHT, deg_to_rad(-30.0) * squat)
+		turns["RightFoot"] = Quaternion(Vector3.RIGHT, deg_to_rad(-30.0) * squat)
+		for role in turns:
+			var k: int = index[tname(role)]
+			var own := Quaternion(row[k * 4], row[k * 4 + 1], row[k * 4 + 2], row[k * 4 + 3])
+			own = (turns[role] as Quaternion) * own
+			if own.w < 0.0:
+				own = -own
+			row[k * 4] = snappedf(own.x, 0.0001)
+			row[k * 4 + 1] = snappedf(own.y, 0.0001)
+			row[k * 4 + 2] = snappedf(own.z, 0.0001)
+			row[k * 4 + 3] = snappedf(own.w, 0.0001)
+		rows.append(row)
+		var h: Array = base.hips[f % int(base.frames)]
+		hips.append([snappedf(h[0] + 0.05 * swing, 0.0001), snappedf(h[1] - 0.17 * squat, 0.0001), snappedf(h[2] + 0.03 * sin(TAU * t / 4.0), 0.0001)])
+	return {"frames": frames, "length": ROUTINE_SECONDS, "loop": true, "speed": 0.0, "hips": hips, "rot": rows}
+
+
+# 0 outside from..to, easing up to 1 and back down over half a second at each end
+static func _bump(t: float, from: float, to: float) -> float:
+	return smoothstep(from, from + 0.5, t) * (1.0 - smoothstep(to - 0.5, to, t))
 
 
 func bake(anim: Animation, bones: Array[String], fix: Dictionary, hips_scale: float, leg_ratio: float) -> Dictionary:

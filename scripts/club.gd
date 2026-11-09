@@ -969,13 +969,13 @@ func _booth(zone: String, cx: float, cz: float) -> void:
 
 
 # One of the people (scripts/person.gd): stands at `at` (a place in the world), turned `yaw` degrees (they face +z), and is solid to you.
-func _person(zone: String, character: String, clip: String, at: Vector2, yaw: float) -> Person:
+func _person(zone: String, character: String, clip: String, at: Vector2, yaw: float, outfit := "", height := 0.0) -> Person:
 	var person := Person.new()
-	person.setup(character, clip)
-	person.position = Vector3(at.x, 0.0, at.y)
+	person.setup(character, clip, outfit)
+	person.position = Vector3(at.x, height, at.y)
 	person.rotation_degrees.y = yaw
 	(_zones[zone] as Node3D).add_child(person)
-	_solid_cyl(Vector3(at.x, 0.85, at.y), 0.3, 1.7)
+	_solid_cyl(Vector3(at.x, height + 0.85, at.y), 0.3, 1.7)
 	return person
 
 
@@ -1089,6 +1089,8 @@ func _build_stage() -> void:
 		_box(_b(zone, "planks"), Vector3(sx + 0.14, top * 0.5, step_z), Vector3(0.28, top, 1.2), _tile("planks"))
 		_glow(zone, Vector3(sx - 0.01, top - 0.015, step_z - 0.6), Vector3(sx - 0.01, top - 0.015, step_z + 0.6), PINK, 0.02)
 		_solid(Vector3(sx + 0.14, top - 0.05, step_z), Vector3(0.28, 0.1, 1.2), KillRoom.WALKABLE)
+	# a woman in a neon bikini dancing on the stage among the poles, facing the room
+	_person(zone, "clubgoer", "Dance_Complex", wv(1.5, -9.0), 0.0, "neon", h)
 	# the poles
 	_pole(zone, wv(0.0, -9.5), h, HALL_H)
 	_pole(zone, wv(3.0, -9.5), h, HALL_H)
